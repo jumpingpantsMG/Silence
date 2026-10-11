@@ -1,0 +1,59 @@
+test.sh
+.DS_Store
+*.log
+*~
+dist/
+/semag/
+!/semag/
+/semag/*
+!/semag/soundboard/
+!/semag/soundboard/**
+
+# Local dev / build cache
+.wrangler/
+dist/
+.tmp-*
+
+ga-service-account.json
+.env
+node_modules
+
+# Git internal files (nested repos) - never commit these
+**/objects/
+**/objects/**/*
+**/*.pack
+**/*.idx
+**/*.rev
+**/hooks/
+**/hooks/**/*
+**/info/
+**/info/**/*
+**/logs/
+**/logs/**/*
+**/refs/
+**/refs/**/*
+**/packed-refs
+**/shallow
+node_modules
+node_modules/**/*
+node_modules/
+.vscode/launch.json
+
+# Large game assets
+*.unityweb
+*.wasm
+*.data
+*.ctex
+*.webm
+*.zip
+
+# Exception: the vendored Ruffle emulator ships with the site. Its .wasm is the
+# actual Flash player, so excluding it leaves every Flash game broken.
+!vendor/ruffle/*.wasm
+
+# Game builds/cache
+Hypackel/
+temp_*/
+non-semag/
+# Untracked local experiment
+hacks/geometry-dash-attempt-bot/

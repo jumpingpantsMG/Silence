@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tempo · typing test</title>
+    <meta name="description" content="a minimal typing test">
+    <link rel="stylesheet" href="../style.css">
+</head>
+
+<body class="tempo">
+
+    <header class="tp-top">
+        <div class="tp-logo">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="6" width="20" height="12" rx="2.5" />
+                <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+            </svg>
+            <span>tempo</span>
+        </div>
+    </header>
+
+    <main class="tp-main">
+        <div class="tp-modes" id="modes"></div>
+        <div class="tp-live" id="live"></div>
+
+        <div class="tp-words" id="words" aria-label="typing test">
+            <div class="tp-inner" id="inner">
+                <div class="tp-caret" id="caret"></div>
+            </div>
+        </div>
+
+        <section class="tp-res" id="res" aria-live="polite">
+            <div class="tp-big">
+                <small>wpm</small><b id="r-wpm">0</b>
+                <small>acc</small><b id="r-acc">0%</b>
+            </div>
+            <svg class="tp-chart" id="r-chart" viewBox="0 0 600 170" preserveAspectRatio="none"
+                aria-hidden="true"></svg>
+            <div class="tp-stats">
+                <div><small>test type</small><span id="r-type"></span></div>
+                <div><small>raw</small><span id="r-raw"></span></div>
+                <div><small>characters</small><span id="r-chars" title="correct / incorrect / extra / missed"></span>
+                </div>
+                <div><small>time</small><span id="r-time"></span></div>
+            </div>
+        </section>
+
+        <div class="tp-restart"><button type="button" id="restart" tabindex="-1" aria-label="restart test">↻</button>
+        </div>
+    </main>
+
+    <footer class="tp-foot"><kbd>tab</kbd> + <kbd>enter</kbd> &nbsp;restart test</footer>
+
+    <script>
+        (() => {
+            const $ = s => document.querySelector(s);
+
+            // Everyday words only. The unlock phrase must never show up in here, or in
+            // any run of these words, so keep this list free of it.
+            const WORDS = [...new Set(`the be of and to in that have it for not on with he as you do at this but his by from
+    they we say her she or an will my one all would there their what so up out if about who get which go me when make
+    can like time no just him know take people into year your good some could them see other than then now look only
+    come its over think also back after use two how our work first well way even new want because any these give day
+    most us is are was were been has had did said each tell does set three air play small end put home read hand port
+    large spell add land here must big high such follow act why ask men change went light kind off need house picture
+    try again animal point mother world near build self earth father head stand own page should country found answer
+    school grow study still learn plant cover food sun four between state keep eye never last let thought city tree
+    cross farm hard start might story saw far sea draw left late run while press close night real life few north open
+    seem together next white children begin got walk example ease paper group always music those both mark often
+    letter until mile river car feet care second book carry took science eat room friend began idea fish mountain stop
+    once base hear horse cut sure watch color face wood main enough plain girl usual young ready above ever red list
+    though feel talk bird soon body dog family direct leave song measure door product black short class wind question
+    happen complete ship area half rock order fire south problem piece told knew pass since top whole king space heard
+    best hour better true during hundred five remember step early hold west ground interest reach fast sing listen six
+    table travel less morning ten simple several vowel toward war lay against pattern slow center love person money
+    serve appear road map rain rule govern pull cold notice voice unit power town fine certain fly fall lead cry dark
+    machine note wait plan figure star box noun field rest correct able pound done beauty drive stood contain front
+    teach week final gave green quick develop ocean warm free minute strong special mind behind clear tail produce fact
+    street inch multiply nothing course stay wheel full force blue object decide surface deep moon island foot system
+    busy test record boat common gold possible plane dry wonder laugh thousand ago ran check game shape hot miss
+    brought heat snow tire bring yes distant fill east paint language among`.split(/\s+/))];
+
+            const PASS = "silence";
+            const MODES = { time: [15, 30, 60], words: [10, 25, 50] };
+            const KEY = "tempo:cfg";
+
+            let cfg = { type: "time", n: 30 };
+            try {
+                const s = JSON.parse(localStorage.getItem(KEY) || "null");
+                if (s && Array.isArray(MODES[s.type]) && MODES[s.type].includes(s.n)) cfg = { type: s.type, n: s.n };
+            } catch { }
+
+            const inner = $("#inner"), caret = $("#caret"), live = $("#live"), restartBtn = $("#restart");
+            let words, typed, els, wi, started, finished, t0, ticker, series, keys, armed = false;
+
+            /* ───────── words ───────── */
+            const pick = prev => { let w; do { w = WORDS[(Math.random() * WORDS.length) | 0]; } while (w === prev); return w; };
+
+            function addWords(n) {
+                for (let i = 0; i < n; i++) {
+                    const w = pick(words[words.length - 1]);
+                    const el = document.createElement("div");
+                    el.className = "word";
+                    el.append(...[...w].map(c => { const s = document.createElement("span"); s.className = "l"; s.textContent = c; return s; }));
+                    words.push(w); typed.push(""); els.push(el); inner.append(el);
+                }
+            }
+
+            function paint(i) {
+                const w = words[i], t = typed[i], out = [];
+                for (let k = 0; k < Math.max(w.length, t.length); k++) {
+                    const s = document.createElement("span");
+                    s.className = "l " + (k >= w.length ? "extra" : k >= t.length ? "" : t[k] === w[k] ? "ok" : "bad");
+                    s.textContent = k < w.length ? w[k] : t[k];
+                    out.push(s);
+                }
+                els[i].replaceChildren(...out);
+                els[i].classList.toggle("err", i < wi && t !== w);
+            }
+
+            // keep the active word on the second line and put the caret on the next letter
+            function place() {
+                const el = els[wi], lh = el.offsetHeight, top = el.offsetTop;
+                inner.style.transform = `translateY(${-Math.max(0, top - lh)}px)`;
+                const letters = el.children, t = typed[wi].length, last = letters[letters.length - 1];
+                const x = t < letters.length ? letters[t].offsetLeft : last.offsetLeft + last.offsetWidth;
+                caret.style.left = x + "px";
+                caret.style.top = top + (lh - caret.offsetHeight) / 2 + "px";
+            }
+
+            /* ───────── scoring ───────── */
+            function score(sec) {
+                let ok = 0, raw = 0;
+                for (let i = 0; i <= wi && i < words.length; i++) {
+                    const full = i < wi;
+                    raw += typed[i].length + (full ? 1 : 0);
+                    if (typed[i] === words[i]) ok += words[i].length + (full ? 1 : 0);
+                }
+                const m = Math.max(sec, 0.5) / 60;
+                return { wpm: ok / 5 / m, raw: raw / 5 / m };
+            }
+
+            function chart(pts) {
+                const W = 600, H = 170, pad = 8, max = Math.max(10, ...pts.map(p => Math.max(p.wpm, p.raw)));
+                const x = i => (pts.length < 2 ? W / 2 : pad + i * (W - 2 * pad) / (pts.length - 1));
+                const y = v => H - pad - v / max * (H - 2 * pad);
+                const d = k => pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p[k]).toFixed(1)}`).join("");
+                $("#r-chart").innerHTML = `<path class="raw" d="${d("raw")}"/><path class="wpm" d="${d("wpm")}"/>`;
+            }
+
+            function finish() {
+                if (finished) return;
+                finished = true;
+                clearInterval(ticker);
+                const sec = cfg.type === "time" ? cfg.n : (performance.now() - t0) / 1000;
+                while (series.length < Math.floor(sec)) series.push(score(series.length + 1));
+                const s = score(sec);
+                series.push(s);
+
+                let ok = 0, bad = 0, extra = 0, missed = 0;
+                for (let i = 0; i <= wi && i < words.length; i++) {
+                    const w = words[i], t = typed[i];
+                    for (let k = 0; k < Math.min(w.length, t.length); k++) t[k] === w[k] ? ok++ : bad++;
+                    if (t.length > w.length) extra += t.length - w.length;
+                    if (i < wi && t.length < w.length) missed += w.length - t.length;
+                }
+                const total = keys.ok + keys.bad;
+                $("#r-wpm").textContent = Math.round(s.wpm);
+                $("#r-acc").textContent = (total ? Math.round(keys.ok / total * 100) : 0) + "%";
+                $("#r-raw").textContent = Math.round(s.raw);
+                $("#r-chars").textContent = `${ok}/${bad}/${extra}/${missed}`;
+                $("#r-time").textContent = Math.round(sec) + "s";
+                $("#r-type").textContent = `${cfg.type} ${cfg.n}`;
+                chart(series);
+                document.body.classList.remove("typing");
+                document.body.classList.add("tp-done");
+            }
+
+            /* ───────── test lifecycle ───────── */
+            function start() {
+                started = true;
+                t0 = performance.now();
+                ticker = setInterval(tick, 200);
+                live.classList.add("on");
+                document.body.classList.add("typing");
+            }
+
+            function tick() {
+                const sec = (performance.now() - t0) / 1000;
+                if (cfg.type === "time") {
+                    live.textContent = Math.max(0, Math.ceil(cfg.n - sec));
+                    if (sec >= cfg.n) return finish();
+                } else live.textContent = `${wi}/${cfg.n}`;
+                while (series.length < Math.floor(sec)) series.push(score(series.length + 1));
+            }
+
+            function reset() {
+                clearInterval(ticker);
+                words = []; typed = []; els = []; wi = 0; started = false; finished = false; series = []; keys = { ok: 0, bad: 0 };
+                armed = false; restartBtn.classList.remove("armed");
+                inner.replaceChildren(caret);
+                addWords(cfg.type === "words" ? cfg.n : 80);
+                inner.style.transform = "";
+                document.body.classList.remove("tp-done", "typing");
+                live.classList.remove("on");
+                live.textContent = cfg.type === "time" ? cfg.n : `0/${cfg.n}`;
+                renderModes();
+                place();
+            }
+
+            function setMode(type, n) {
+                cfg = { type, n };
+                try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch { }
+                reset();
+            }
+
+            function renderModes() {
+                const box = $("#modes");
+                const btn = (label, on, fn) => {
+                    const b = document.createElement("button");
+                    b.type = "button"; b.tabIndex = -1; b.textContent = label;
+                    if (on) b.className = "on";
+                    b.addEventListener("click", () => { fn(); b.blur(); });
+                    return b;
+                };
+                const bar = document.createElement("i");
+                box.replaceChildren(
+                    ...Object.keys(MODES).map(t => btn(t, cfg.type === t, () => setMode(t, MODES[t][1]))),
+                    bar,
+                    ...MODES[cfg.type].map(n => btn(n, cfg.n === n, () => setMode(cfg.type, n))),
+                );
+            }
+
+            /* ───────── typing ───────── */
+            function typeChar(ch) {
+                if (!started) start();
+                const w = words[wi];
+                if (typed[wi].length >= w.length + 8) return;
+                ch === w[typed[wi].length] ? keys.ok++ : keys.bad++;
+                typed[wi] += ch;
+                paint(wi);
+                place();
+                if (cfg.type === "words" && wi === words.length - 1 && typed[wi] === w) finish();
+            }
+
+            function space() {
+                if (!started || !typed[wi].length) return;
+                if (wi === words.length - 1) return finish();
+                keys.ok++;
+                wi++;
+                paint(wi - 1);
+                if (cfg.type === "time" && words.length - wi < 40) addWords(40);
+                place();
+            }
+
+            function back() {
+                if (typed[wi].length) {
+                    typed[wi] = typed[wi].slice(0, -1);
+                    paint(wi);
+                } else if (wi > 0 && typed[wi - 1] !== words[wi - 1]) {   // may step back into a wrong word
+                    wi--;
+                    paint(wi + 1); paint(wi);
+                }
+                place();
+            }
+
+            /* ───────── unlock ─────────
+               Watches the last few letters typed, wherever they land. Correct text can't
+               produce it: the words never contain it and a space resets the buffer. */
+            let buf = "";
+            function watch(e) {
+                if (e.key === "Backspace") buf = buf.slice(0, -1);
+                else if (/^[a-z]$/i.test(e.key)) buf = (buf + e.key.toLowerCase()).slice(-PASS.length);
+                else if (e.key.length === 1 || e.key === "Enter" || e.key === "Tab") buf = "";
+                if (buf !== PASS) return false;
+                buf = "";
+                try { parent.silence.unlock(); } catch { }
+                return true;
+            }
+
+            addEventListener("keydown", e => {
+                if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+                if (watch(e)) return;
+
+                if (e.key === "Tab") { e.preventDefault(); armed = true; restartBtn.classList.add("armed"); return; }
+                if (e.key === "Enter") { if (armed || finished) { e.preventDefault(); reset(); } return; }
+                armed = false; restartBtn.classList.remove("armed");
+                if (finished) return;
+
+                if (e.key === "Backspace") { e.preventDefault(); back(); }
+                else if (e.key === " ") { e.preventDefault(); space(); }
+                else if (e.key.length === 1) { e.preventDefault(); typeChar(e.key); }
+            });
+
+            restartBtn.addEventListener("click", () => { reset(); restartBtn.blur(); });
+            addEventListener("resize", () => { if (!finished) place(); });
+            if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!finished) place(); });
+
+            reset();
+        })();
+    </script>
+</body>
+
+</html>

@@ -4,8 +4,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>silence</title>
-    <meta name="description" content="silence. play quietly.">
+    <title>tempo · typing test</title>
+    <meta name="description" content="a minimal typing test">
     <meta name="theme-color" content="#08080a">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <style>
@@ -140,6 +140,12 @@
                 opacity: 1
             }
         }
+
+        body.locked .mark {
+            visibility: hidden
+        }
+
+        /* no brand text while locked */
 
         .bar {
             position: absolute;
@@ -297,6 +303,7 @@
 </head>
 
 <body class="loading">
+    <script>try { if (sessionStorage.getItem("silence:unlocked") !== "1") document.body.classList.add("locked") } catch (e) { document.body.classList.add("locked") }</script>
 
     <div class="bar" aria-hidden="true"></div>
 
@@ -314,7 +321,7 @@
         </div>
     </div>
 
-    <iframe id="frame" title="silence"
+    <iframe id="frame" title="content"
         sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock allow-modals allow-downloads allow-orientation-lock"
         allow="fullscreen; gamepad; autoplay; clipboard-write; accelerometer; gyroscope" allowfullscreen
         referrerpolicy="no-referrer"></iframe>
@@ -324,7 +331,7 @@
             /* ───────── config ───────── */
             // Pages are fetched from jsDelivr:
             //   https://cdn.jsdelivr.net/gh/<repo>@<ref>/<dir><page>.html
-            // If that fails (or on localhost) they come from this site's own /pages folder.
+            // If that fails (or the URL has ?local) they come from this site's own /pages folder.
             const CONFIG = {
                 repo: "jumpingpantsmg/Silence",
                 ref: "main",          // branch, tag or commit SHA (a SHA skips CDN cache lag)
@@ -334,7 +341,7 @@
             };
             const CDN = `https://cdn.jsdelivr.net/gh/${CONFIG.repo}@${CONFIG.ref}/`;
             const LOCAL = new URL("./", location.href).href;
-            const DEV = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+            const LOCAL_FIRST = /[?&]local\b/.test(location.search);
 
             const $ = s => document.querySelector(s);
             const frame = $("#frame");
@@ -387,8 +394,35 @@
                 }
                 document.title = s.title.trim() || pageTitle;
             }
-            window.silence = { read, write, apply, presets: PRESETS, defaults: DEFAULTS };
+            window.silence = { read, write, apply, presets: PRESETS, defaults: DEFAULTS, lock, unlock };
             apply();
+
+            /* ───────── lock ─────────
+               Until the passphrase is typed on the disguise page, every route shows that page.
+               Unlocked state lives in sessionStorage, so closing the tab locks it again. */
+            const GATE = "silence:unlocked";
+            let memUnlocked = false;
+            const isUnlocked = () => {
+                try { if (sessionStorage.getItem(GATE) === "1") return true; } catch { }
+                return memUnlocked;
+            };
+            function unlock() {
+                memUnlocked = true;
+                try { sessionStorage.setItem(GATE, "1"); } catch { }
+                document.body.classList.remove("locked");
+                load(pageFromHash());
+            }
+            function lock() {
+                memUnlocked = false;
+                try { sessionStorage.removeItem(GATE); } catch { }
+                document.body.classList.add("locked");
+                history.replaceState(null, "", location.pathname + location.search);   // drop #/route from the URL
+                load(CONFIG.home);
+            }
+            const hotkey = e => {                                     // Alt + Shift + L
+                if (e.altKey && e.shiftKey && e.code === "KeyL" && isUnlocked()) { e.preventDefault(); lock(); }
+            };
+            addEventListener("keydown", hotkey);
 
             /* ───────── fetching ───────── */
             const pageFromHash = () => {
@@ -396,9 +430,9 @@
                 return /^[\w-]+$/.test(h) ? h : CONFIG.home;
             };
             const sources = name => {
-                const cdn = { url: `${CDN}${CONFIG.dir}${name}.html`, css: `${CDN}style.css` };
-                const local = { url: `${LOCAL}${CONFIG.dir}${name}.html`, css: `${LOCAL}style.css` };
-                return DEV ? [local, cdn] : [cdn, local];
+                const cdn = { url: `${CDN}${CONFIG.dir}${name}.html`, base: CDN };
+                const local = { url: `${LOCAL}${CONFIG.dir}${name}.html`, base: LOCAL };
+                return LOCAL_FIRST ? [local, cdn] : [cdn, local];
             };
 
             async function timedFetch(url) {
@@ -411,17 +445,22 @@
                 } finally { clearTimeout(t); }
             }
 
+            // A page that says "../something.ext" (stylesheet, image, script, json...) means a
+            // file at the repo root, but ../ means nothing inside a srcdoc. Point every one at
+            // the place the page itself came from: jsDelivr normally. ../ links to .html pages
+            // are left alone because the shell routes those itself.
+            const ASSET = /(["'])\.\.\/([\w.%\/-]+\.[A-Za-z0-9]+)\1/g;
+            const rewrite = (html, base) =>
+                html.replace(ASSET, (m, q, p) => (/\.html?$/i.test(p) ? m : `${q}${base}${p}${q}`));
+
             // jsDelivr serves .html as text/plain, so the page can't be iframed by URL.
-            // Fetch the source and hand it to the frame as srcdoc. Pages link
-            // "../style.css", which means nothing inside a srcdoc, so point it at the
-            // same place the page itself came from.
+            // Fetch the source and hand it to the frame as srcdoc.
             async function getPage(name) {
                 if (cache.has(name)) return cache.get(name);
                 let lastErr;
                 for (const src of sources(name)) {
                     try {
-                        const html = (await timedFetch(src.url))
-                            .replace(/href=(["'])\.\.\/style\.css\1/g, () => `href="${src.css}"`);
+                        const html = rewrite(await timedFetch(src.url), src.base);
                         cache.set(name, html);
                         return html;
                     } catch (e) { lastErr = e; }
@@ -435,7 +474,8 @@
             };
 
             /* ───────── load ───────── */
-            async function load(name) {
+            async function load(want) {
+                const name = isUnlocked() ? want : "disguise";   // locked: every route is the typing test
                 const my = ++token;
                 setState("loading");
                 frame.removeAttribute("srcdoc");
@@ -476,6 +516,8 @@
                     location.hash = next;
                 });
 
+                doc.addEventListener("keydown", hotkey);
+                try { frame.contentWindow.focus(); } catch { }          // typing goes straight to the page
                 requestAnimationFrame(() => setState("ready"));
             });
 

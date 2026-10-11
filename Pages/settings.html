@@ -81,6 +81,17 @@
             </section>
 
             <section class="panel">
+                <h2>privacy</h2>
+                <div class="row">
+                    <div>
+                        <div class="t">Lock</div>
+                        <div class="d">Back to the typing test right now. Shortcut: Alt + Shift + L.</div>
+                    </div>
+                    <button class="btn sm" id="lock" type="button">lock now</button>
+                </div>
+            </section>
+
+            <section class="panel">
                 <h2>reset</h2>
                 <div class="row">
                     <div>
@@ -138,6 +149,7 @@
             $("#motion").addEventListener("change", e => save({ motion: e.target.checked ? "reduced" : "full" }));
             let td;
             $("#title").addEventListener("input", e => { clearTimeout(td); td = setTimeout(() => save({ title: e.target.value }), 250); });
+            $("#lock").addEventListener("click", () => S.lock());
             $("#reset").addEventListener("click", () => { cur = { ...S.defaults }; S.write(cur); S.apply(); sync(); toast("defaults restored"); });
 
             sync();
