@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>silence · admin</title>
+    <meta name="theme-color" content="#08080a">
+    <link rel="stylesheet" href="../style.css">
+</head>
+
+<body>
+    <header>
+        <div class="wrap">
+            <nav>
+                <a class="logo" href="../index.html">silence</a>
+                <div class="links"><a class="on" href="admin.html">admin</a></div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- login -->
+    <main class="wrap" id="login-view">
+        <form class="panel login" id="login" autocomplete="off">
+            <h1>admin</h1>
+            <p>enter the admin token to view submissions.</p>
+            <div class="field">
+                <label for="tok">Token</label>
+                <input id="tok" type="password" autocomplete="off" spellcheck="false">
+                <div class="hint"><span class="err" id="login-err"></span></div>
+            </div>
+            <div class="actions"><button class="btn primary" type="submit" id="login-btn">sign in</button></div>
+        </form>
+    </main>
+
+    <!-- dashboard -->
+    <main class="wrap mid stack" id="dash" hidden>
+        <section class="head" style="padding-bottom:20px">
+            <h1>submissions</h1>
+        </section>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="toolbar">
+            <div class="chips" id="f-type">
+                <button class="chip on" data-v="all">all</button>
+                <button class="chip" data-v="request">requests</button>
+                <button class="chip" data-v="bug">bugs</button>
+                <button class="chip" data-v="feedback">feedback</button>
+            </div>
+            <div class="chips" id="f-status">
+                <button class="chip on" data-v="all">any</button>
+                <button class="chip" data-v="new">new</button>
+                <button class="chip" data-v="done">done</button>
+            </div>
+            <span class="grow"></span>
+            <button class="btn sm" id="refresh">refresh</button>
+            <button class="btn sm" id="logout">sign out</button>
+        </div>
+
+        <div class="list" id="list"></div>
+        <p class="empty" id="empty" style="padding:48px 0">nothing here.</p>
+    </main>
+
+    <!-- detail drawer -->
+    <div class="drawer-back" id="back"></div>
+    <aside class="drawer" id="drawer" aria-hidden="true">
+        <button class="btn sm" id="d-close">close</button>
+        <h2 id="d-subject"></h2>
+        <span class="pill" id="d-type"></span>
+        <dl class="kv" id="d-kv"></dl>
+        <div class="msg" id="d-msg"></div>
+        <div class="actions">
+            <button class="btn sm" id="d-toggle">mark done</button>
+            <button class="btn sm danger" id="d-delete">delete</button>
+        </div>
+    </aside>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+        (() => {
+            const $ = s => document.querySelector(s);
+            const KEY = "silence:admin";
+            let token = "", items = [], fType = "all", fStatus = "all", openId = null, tt;
+            try { token = sessionStorage.getItem(KEY) || ""; } catch { }
+
+            const toast = (m, bad) => {
+                const t = $("#toast");
+                t.textContent = m; t.classList.toggle("err", !!bad); t.classList.add("show");
+                clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2400);
+            };
+            const ago = ts => {
+                const s = Math.max(1, (Date.now() - ts) / 1000);
+                if (s < 60) return "now";
+                if (s < 3600) return Math.floor(s / 60) + "m";
+                if (s < 86400) return Math.floor(s / 3600) + "h";
+                if (s < 2592000) return Math.floor(s / 86400) + "d";
+                return new Date(ts).toLocaleDateString();
+            };
+            const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+            /* ───────── api ───────── */
+            async function api(path, opts = {}) {
+                const r = await fetch("/api/admin" + path, {
+                    ...opts,
+                    headers: { authorization: "Bearer " + token, "content-type": "application/json" },
+                });
+                if (r.status === 401) { signOut(); throw new Error("wrong token"); }
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(data.error || "request failed (" + r.status + ")");
+                return data;
+            }
+
+            /* ───────── auth ───────── */
+            function show(authed) { $("#login-view").hidden = authed; $("#dash").hidden = !authed; }
+            function signOut() {
+                token = ""; try { sessionStorage.removeItem(KEY); } catch { }
+                closeDrawer(); show(false);
+            }
+            $("#login").addEventListener("submit", async e => {
+                e.preventDefault();
+                token = $("#tok").value.trim();
+                if (!token) return;
+                const btn = $("#login-btn"); btn.disabled = true; $("#login-err").textContent = "";
+                try {
+                    await load();
+                    try { sessionStorage.setItem(KEY, token); } catch { }
+                    $("#tok").value = "";
+                } catch (ex) {
+                    $("#login-err").textContent = ex.message; token = "";
+                } finally { btn.disabled = false; }
+            });
+            $("#logout").addEventListener("click", signOut);
+
+            /* ───────── load + render ───────── */
+            async function load() {
+                let all = [], cursor = "";
+                for (let i = 0; i < 20; i++) {                       // up to 2000 submissions
+                    const d = await api("/submissions?limit=100" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+                    all = all.concat(d.items);
+                    if (!d.cursor) break;
+                    cursor = d.cursor;
+                }
+                items = all;
+                show(true); render();
+            }
+
+            function render() {
+                const n = (f) => items.filter(f).length;
+                const stats = $("#stats"); stats.replaceChildren();
+                [["total", items.length], ["new", n(i => i.st === "new")], ["requests", n(i => i.t === "request")],
+                ["bugs", n(i => i.t === "bug")], ["feedback", n(i => i.t === "feedback")]].forEach(([k, v]) => {
+                    const s = el("div", "stat"); s.append(el("b", null, v), el("span", null, k)); stats.append(s);
+                });
+
+                const rows = items.filter(i => (fType === "all" || i.t === fType) && (fStatus === "all" || i.st === fStatus));
+                const list = $("#list"); list.replaceChildren();
+                rows.forEach(i => {
+                    const b = el("button", "item" + (i.st === "done" ? " is-done" : ""));
+                    b.type = "button";
+                    const main = el("div", "main");
+                    main.append(el("b", null, i.s || i.p || "(no subject)"), el("span", null, (i.n ? i.n + " — " : "") + (i.p || "")));
+                    b.append(el("span", "pill " + i.t, i.t), main, el("time", null, ago(i.ts)), el("span", "pill st " + i.st, i.st));
+                    b.addEventListener("click", () => openItem(i.id));
+                    list.append(b);
+                });
+                $("#empty").style.display = rows.length ? "none" : "block";
+                list.style.display = rows.length ? "" : "none";
+            }
+
+            function chips(sel, set) {
+                $(sel).addEventListener("click", e => {
+                    const b = e.target.closest(".chip"); if (!b) return;
+                    $(sel).querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === b));
+                    set(b.dataset.v); render();
+                });
+            }
+            chips("#f-type", v => fType = v);
+            chips("#f-status", v => fStatus = v);
+            $("#refresh").addEventListener("click", () => load().then(() => toast("refreshed")).catch(e => toast(e.message, true)));
+
+            /* ───────── drawer ───────── */
+            async function openItem(id) {
+                try {
+                    const d = await api("/submissions/" + encodeURIComponent(id));
+                    openId = id;
+                    $("#d-subject").textContent = d.subject || "(no subject)";
+                    const t = $("#d-type"); t.className = "pill " + d.type; t.textContent = d.type;
+                    const kv = $("#d-kv"); kv.replaceChildren();
+                    [["from", d.name || "anonymous"], ["contact", d.contact || "—"], ["sent", new Date(d.ts).toLocaleString()], ["status", d.status]]
+                        .forEach(([k, v]) => kv.append(el("dt", null, k), el("dd", null, v)));
+                    $("#d-msg").textContent = d.message;
+                    $("#d-toggle").textContent = d.status === "done" ? "mark new" : "mark done";
+                    $("#d-delete").textContent = "delete"; $("#d-delete").dataset.armed = "";
+                    $("#drawer").classList.add("open"); $("#back").classList.add("open");
+                    $("#drawer").setAttribute("aria-hidden", "false");
+                } catch (ex) { toast(ex.message, true); }
+            }
+            function closeDrawer() {
+                openId = null;
+                $("#drawer").classList.remove("open"); $("#back").classList.remove("open");
+                $("#drawer").setAttribute("aria-hidden", "true");
+            }
+            $("#d-close").addEventListener("click", closeDrawer);
+            $("#back").addEventListener("click", closeDrawer);
+            addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+
+            $("#d-toggle").addEventListener("click", async () => {
+                const it = items.find(i => i.id === openId); if (!it) return;
+                const status = it.st === "done" ? "new" : "done";
+                try {
+                    await api("/submissions/" + encodeURIComponent(openId), { method: "PATCH", body: JSON.stringify({ status }) });
+                    it.st = status; render(); closeDrawer(); toast("marked " + status);
+                } catch (ex) { toast(ex.message, true); }
+            });
+            $("#d-delete").addEventListener("click", async e => {
+                const b = e.currentTarget;
+                if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "click again to confirm"; return; }
+                try {
+                    await api("/submissions/" + encodeURIComponent(openId), { method: "DELETE" });
+                    items = items.filter(i => i.id !== openId); render(); closeDrawer(); toast("deleted");
+                } catch (ex) { toast(ex.message, true); }
+            });
+
+            /* ───────── boot ───────── */
+            if (token) load().catch(() => show(false)); else show(false);
+        })();
+    </script>
+</body>
+
+</html>

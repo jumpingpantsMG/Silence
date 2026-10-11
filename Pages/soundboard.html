@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>silence · soundboard</title>
+    <meta name="theme-color" content="#08080a">
+    <link rel="stylesheet" href="../style.css">
+</head>
+
+<body>
+    <header>
+        <div class="wrap">
+            <nav>
+                <a class="logo" href="../index.html">silence</a>
+                <div class="links">
+                    <a href="index.html">games</a>
+                    <a class="on" href="soundboard.html">soundboard</a>
+                    <a href="forms.html">forms</a>
+                    <a href="settings.html">settings</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main class="wrap narrow stack">
+        <section class="head">
+            <h1>soundboard</h1>
+            <p>twelve synthesized sounds. tap a pad or use the keys. record a loop and layer on top.</p>
+        </section>
+
+        <section class="panel">
+            <div class="pads" id="pads"></div>
+        </section>
+
+        <section class="panel">
+            <h2>mix</h2>
+            <div class="ctl">
+                <label for="vol">volume</label>
+                <input id="vol" type="range" min="0" max="1" step="0.01" value="0.7">
+                <output id="vol-o">70%</output>
+            </div>
+            <div class="ctl">
+                <label for="pitch">pitch</label>
+                <input id="pitch" type="range" min="-12" max="12" step="1" value="0">
+                <output id="pitch-o">0 st</output>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>loop</h2>
+            <div class="rec">
+                <button class="btn sm" id="rec">record</button>
+                <button class="btn sm" id="stop" disabled>stop</button>
+                <button class="btn sm danger" id="clear" disabled>clear</button>
+                <span class="dot" id="dot"></span>
+                <span class="status" id="status">press record, play some pads, press stop.</span>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="wrap"><span>silence</span><span>keys: 1 2 3 4 · Q W E R · A S D F</span></div>
+    </footer>
+
+    <script>
+        (() => {
+            const $ = s => document.querySelector(s);
+            const KEYS = "1234qwerasdf".split("");
+            let ctx, master, noise, ratio = 1;
+
+            /* ───────── audio engine ───────── */
+            function init() {
+                if (ctx) { if (ctx.state === "suspended") ctx.resume(); return; }
+                ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const comp = ctx.createDynamicsCompressor();
+                master = ctx.createGain();
+                master.gain.value = +$("#vol").value;
+                master.connect(comp); comp.connect(ctx.destination);
+                const len = ctx.sampleRate, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                noise = buf;
+            }
+            const env = (g, t, peak, dur) => {
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            };
+            function osc(type, f0, f1, dur, peak = 0.8, t = ctx.currentTime) {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.type = type;
+                o.frequency.setValueAtTime(f0 * ratio, t);
+                if (f1 != null) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1 * ratio), t + dur);
+                env(g, t, peak, dur);
+                o.connect(g).connect(master);
+                o.start(t); o.stop(t + dur + 0.05);
+            }
+            function nz(type, freq, dur, peak = 0.8, t = ctx.currentTime, sweepTo) {
+                const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+                s.buffer = noise;
+                f.type = type;
+                f.frequency.setValueAtTime(freq * ratio, t);
+                if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo * ratio, t + dur);
+                env(g, t, peak, dur);
+                s.connect(f).connect(g).connect(master);
+                s.start(t); s.stop(t + dur + 0.05);
+            }
+
+            const SOUNDS = [
+                ["kick", () => osc("sine", 160, 40, 0.4, 1)],
+                ["snare", () => { nz("highpass", 1500, 0.22, 0.7); osc("triangle", 220, 120, 0.15, 0.5); }],
+                ["hat", () => nz("highpass", 7500, 0.06, 0.5)],
+                ["clap", () => { const t = ctx.currentTime;[0, 0.012, 0.026].forEach(d => nz("bandpass", 1400, 0.09, 0.6, t + d)); nz("bandpass", 1400, 0.2, 0.5, t + 0.04); }],
+                ["bloop", () => osc("sine", 300, 900, 0.14, 0.8)],
+                ["zap", () => osc("sawtooth", 1800, 90, 0.28, 0.5)],
+                ["chime", () => [880, 1320, 1760].forEach((f, i) => osc("sine", f, null, 0.9 - i * 0.15, 0.35))],
+                ["bass", () => osc("square", 55, 50, 0.5, 0.6)],
+                ["pluck", () => osc("triangle", 440, 430, 0.35, 0.8)],
+                ["riser", () => nz("lowpass", 200, 0.9, 0.6, ctx.currentTime, 6000)],
+                ["coin", () => { const t = ctx.currentTime; osc("square", 988, null, 0.08, 0.35, t); osc("square", 1319, null, 0.35, 0.35, t + 0.08); }],
+                ["laser", () => osc("square", 1200, 200, 0.2, 0.4)],
+            ];
+
+            /* ───────── pads ───────── */
+            const padsEl = $("#pads"), padEls = [];
+            SOUNDS.forEach(([name], i) => {
+                const b = document.createElement("button");
+                b.className = "pad";
+                b.style.setProperty("--h", (i * 30 + 250) % 360);
+                b.innerHTML = `<b></b><small></small>`;
+                b.firstChild.textContent = name;
+                b.lastChild.textContent = KEYS[i];
+                b.setAttribute("aria-label", `${name} (key ${KEYS[i]})`);
+                b.addEventListener("pointerdown", e => { e.preventDefault(); hit(i, true); });
+                b.addEventListener("click", e => { if (e.detail === 0) hit(i, true); }); // Enter / Space on a focused pad
+                padsEl.append(b); padEls.push(b);
+            });
+
+            /* ───────── loop recorder ───────── */
+            let recording = false, recStart = 0, events = [], loopDur = 0, timers = [], loopTimer = null;
+            const dot = $("#dot"), status = $("#status");
+            const setStatus = (t, cls) => { status.textContent = t; dot.className = "dot " + (cls || ""); };
+
+            function trigger(i) {
+                init();
+                SOUNDS[i][1]();
+                const el = padEls[i];
+                el.classList.add("hit");
+                setTimeout(() => el.classList.remove("hit"), 110);
+            }
+            function hit(i, fromUser) {
+                trigger(i);
+                if (fromUser && recording) events.push([performance.now() - recStart, i]);
+            }
+
+            function startLoop() {
+                stopLoop();
+                const pass = () => {
+                    events.forEach(([dt, i]) => timers.push(setTimeout(() => trigger(i), dt)));
+                    loopTimer = setTimeout(() => { timers = []; pass(); }, loopDur);
+                };
+                pass();
+                setStatus(`looping ${events.length} hit${events.length === 1 ? "" : "s"} · ${(loopDur / 1000).toFixed(1)}s`, "loop-on");
+            }
+            function stopLoop() { timers.forEach(clearTimeout); timers = []; clearTimeout(loopTimer); loopTimer = null; }
+
+            $("#rec").addEventListener("click", () => {
+                init(); stopLoop();
+                events = []; recording = true; recStart = performance.now();
+                $("#rec").disabled = true; $("#stop").disabled = false; $("#clear").disabled = false;
+                setStatus("recording… play some pads", "rec-on");
+            });
+            $("#stop").addEventListener("click", () => {
+                if (recording) {
+                    recording = false;
+                    loopDur = Math.max(400, performance.now() - recStart);
+                    $("#stop").textContent = "pause";
+                    if (events.length) startLoop(); else { setStatus("nothing recorded."); $("#stop").textContent = "stop"; $("#stop").disabled = true; }
+                    $("#rec").disabled = false;
+                } else if (loopTimer) {
+                    stopLoop(); $("#stop").textContent = "resume"; setStatus("paused");
+                } else if (events.length) {
+                    startLoop(); $("#stop").textContent = "pause";
+                }
+            });
+            $("#clear").addEventListener("click", () => {
+                stopLoop(); recording = false; events = [];
+                $("#rec").disabled = false; $("#stop").disabled = true; $("#clear").disabled = true; $("#stop").textContent = "stop";
+                setStatus("press record, play some pads, press stop.");
+            });
+
+            /* ───────── mix ───────── */
+            $("#vol").addEventListener("input", e => {
+                const v = +e.target.value;
+                $("#vol-o").textContent = Math.round(v * 100) + "%";
+                if (master) master.gain.value = v;
+            });
+            $("#pitch").addEventListener("input", e => {
+                const s = +e.target.value;
+                ratio = Math.pow(2, s / 12);
+                $("#pitch-o").textContent = (s > 0 ? "+" : "") + s + " st";
+            });
+
+            /* ───────── keyboard ───────── */
+            const down = new Set();
+            addEventListener("keydown", e => {
+                if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+                if (/^(input|textarea|select)$/i.test(e.target.tagName)) return;
+                const i = KEYS.indexOf(e.key.toLowerCase());
+                if (i < 0 || down.has(i)) return;
+                down.add(i); hit(i, true);
+            });
+            addEventListener("keyup", e => { const i = KEYS.indexOf(e.key.toLowerCase()); if (i >= 0) down.delete(i); });
+            addEventListener("pagehide", stopLoop);
+        })();
+    </script>
+</body>
+
+</html>

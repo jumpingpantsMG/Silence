@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>silence · forms</title>
+    <meta name="theme-color" content="#08080a">
+    <link rel="stylesheet" href="../style.css">
+</head>
+
+<body>
+    <header>
+        <div class="wrap">
+            <nav>
+                <a class="logo" href="../index.html">silence</a>
+                <div class="links">
+                    <a href="index.html">games</a>
+                    <a href="soundboard.html">soundboard</a>
+                    <a class="on" href="forms.html">forms</a>
+                    <a href="settings.html">settings</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main class="wrap narrow stack">
+        <section class="head">
+            <h1>forms</h1>
+            <p>request a game, report something broken, or just say hi.</p>
+        </section>
+
+        <form id="f" class="panel" novalidate autocomplete="off">
+            <div class="seg" id="seg" role="tablist">
+                <button type="button" class="on" data-t="request" role="tab">game request</button>
+                <button type="button" data-t="bug" role="tab">bug report</button>
+                <button type="button" data-t="feedback" role="tab">feedback</button>
+            </div>
+
+            <div class="grid2 field">
+                <div class="field" style="margin:0">
+                    <label for="name">Name <span style="opacity:.6">(optional)</span></label>
+                    <input id="name" type="text" maxlength="60" placeholder="anonymous">
+                </div>
+                <div class="field" style="margin:0">
+                    <label for="contact">Contact <span style="opacity:.6">(optional)</span></label>
+                    <input id="contact" type="text" maxlength="120" placeholder="email or handle, if you want a reply">
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="subject" id="l-subject">Game name or link</label>
+                <input id="subject" type="text" maxlength="100">
+            </div>
+
+            <div class="field">
+                <label for="message" id="l-message">Anything we should know?</label>
+                <textarea id="message" maxlength="1500" rows="6"></textarea>
+                <div class="hint"><span class="err" id="err"></span><span id="ctr">0 / 1500</span></div>
+            </div>
+
+            <input class="hp" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+            <div class="actions">
+                <button class="btn primary" id="send" type="submit">send</button>
+            </div>
+        </form>
+
+        <section class="panel done" id="done" hidden>
+            <div class="tick">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12.5l4.5 4.5L19 7.5" />
+                </svg>
+            </div>
+            <h2>sent. thank you.</h2>
+            <p>we read everything, even if we don't reply.</p>
+            <div class="actions" style="justify-content:center">
+                <button class="btn" id="again" type="button">send another</button>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="wrap"><span>silence</span><span>no accounts, no tracking</span></div>
+    </footer>
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+        (() => {
+            const $ = s => document.querySelector(s);
+            const f = $("#f"), done = $("#done"), err = $("#err"), toastEl = $("#toast");
+            const COPY = {
+                request: { subject: "Game name or link", sPh: "e.g. Slope Rider", message: "Anything we should know?", mPh: "genre, where you played it, why you like it…", needSubject: true },
+                bug: { subject: "Which game or page?", sPh: "e.g. Drift Hunters", message: "What went wrong?", mPh: "what you did, what you expected, what happened instead…", needSubject: true },
+                feedback: { subject: "Subject (optional)", sPh: "", message: "What's on your mind?", mPh: "ideas, complaints, compliments…", needSubject: false },
+            };
+            let type = "request";
+
+            function setType(t) {
+                type = t;
+                const c = COPY[t];
+                document.querySelectorAll("#seg button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+                $("#l-subject").textContent = c.subject;
+                $("#subject").placeholder = c.sPh;
+                $("#l-message").textContent = c.message;
+                $("#message").placeholder = c.mPh;
+                err.textContent = "";
+                document.querySelectorAll(".bad").forEach(e => e.classList.remove("bad"));
+            }
+            $("#seg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setType(b.dataset.t); });
+            $("#message").addEventListener("input", e => { $("#ctr").textContent = `${e.target.value.length} / 1500`; });
+
+            let tt;
+            function toast(msg, bad) {
+                toastEl.textContent = msg;
+                toastEl.classList.toggle("err", !!bad);
+                toastEl.classList.add("show");
+                clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove("show"), 3200);
+            }
+
+            const LAST = "silence:lastForm";
+            const wait = () => { try { return Math.max(0, 30000 - (Date.now() - +localStorage.getItem(LAST))); } catch { return 0; } };
+
+            f.addEventListener("submit", async e => {
+                e.preventDefault();
+                const c = COPY[type];
+                const data = {
+                    type,
+                    name: $("#name").value.trim(),
+                    contact: $("#contact").value.trim(),
+                    subject: $("#subject").value.trim(),
+                    message: $("#message").value.trim(),
+                    website: $("#website").value,
+                };
+                document.querySelectorAll(".bad").forEach(x => x.classList.remove("bad"));
+                err.textContent = "";
+                if (c.needSubject && !data.subject) { $("#subject").classList.add("bad"); $("#subject").focus(); err.textContent = "tell us which one"; return; }
+                if (data.message.length < 5) { $("#message").classList.add("bad"); $("#message").focus(); err.textContent = "a few more words, please"; return; }
+                const w = wait();
+                if (w) { toast(`slow down — try again in ${Math.ceil(w / 1000)}s`, true); return; }
+
+                const btn = $("#send");
+                btn.disabled = true; btn.textContent = "sending…";
+                try {
+                    const r = await fetch("/api/forms", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+                    if (r.status === 429) throw new Error("too many messages, try again in a minute");
+                    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "couldn't send, try again");
+                    try { localStorage.setItem(LAST, Date.now()); } catch { }
+                    f.hidden = true; done.hidden = false;
+                } catch (ex) {
+                    toast(ex.message || "couldn't send, try again", true);
+                } finally {
+                    btn.disabled = false; btn.textContent = "send";
+                }
+            });
+
+            $("#again").addEventListener("click", () => {
+                f.reset(); $("#ctr").textContent = "0 / 1500";
+                done.hidden = true; f.hidden = false; setType(type);
+            });
+
+            setType("request");
+        })();
+    </script>
+</body>
+
+</html>

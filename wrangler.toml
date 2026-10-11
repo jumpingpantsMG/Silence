@@ -1,0 +1,32 @@
+name = "silence"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+# Static site: everything in this folder is served as-is (see .assetsignore).
+# Only /api/* hits the Worker first; every other path goes straight to assets.
+[assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# Form submissions + admin data.
+#   npx wrangler kv namespace create FORMS
+# then paste the printed id below.
+[[kv_namespaces]]
+binding = "FORMS"
+id = "256ed83678d6493f9471fb589c87b31f"
+
+[observability]
+enabled = true
+
+# Secrets (not stored in this file):
+#   npx wrangler secret put ADMIN_TOKEN     # use a long random string
+#
+# Local dev:
+#   put ADMIN_TOKEN=... in a .dev.vars file, then  npx wrangler dev
+#
+# Deploy:
+#   npx wrangler deploy
+#
+# Game files are served straight from the public R2 bucket
+# (pub-31ddb721e92142be8b2deee228c36013.r2.dev), so no R2 binding is needed here.

@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>silence</title>
+    <meta name="description" content="silence. play quietly.">
+    <meta name="theme-color" content="#08080a">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <style>
+        /* The shell keeps this small block inline on purpose: it has to paint the
+     loader before any network request (CDN or style.css) has finished.
+     Every page it loads uses /style.css instead. */
+        :root {
+            color-scheme: dark;
+            --bg: #08080a;
+            --panel: #0f0f13;
+            --line: rgba(255, 255, 255, .08);
+            --fg: #ececf1;
+            --muted: #767683;
+            --accent: #8b7cff;
+            --accent2: #5ce1c6;
+            --ease: cubic-bezier(.2, .7, .2, 1);
+            --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        html,
+        body {
+            height: 100%;
+            background: var(--bg)
+        }
+
+        body {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            color: var(--fg);
+            font-family: var(--font);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+
+        button {
+            font: inherit;
+            color: inherit;
+            cursor: pointer
+        }
+
+        /* frame */
+        #frame {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: var(--bg);
+            opacity: 0;
+            transform: translateY(8px) scale(.995);
+            filter: blur(6px);
+            transition: opacity .55s var(--ease), transform .55s var(--ease), filter .55s var(--ease);
+        }
+
+        body.ready #frame {
+            opacity: 1;
+            transform: none;
+            filter: none
+        }
+
+        /* loader */
+        .loader {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            z-index: 2;
+            background:
+                radial-gradient(700px circle at 50% 42%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
+                radial-gradient(900px circle at 85% 115%, color-mix(in srgb, var(--accent2) 8%, transparent), transparent 60%),
+                var(--bg);
+            transition: opacity .45s var(--ease), visibility .45s;
+        }
+
+        body.ready .loader {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none
+        }
+
+        .loader::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: .05;
+            mix-blend-mode: overlay;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+        }
+
+        .mark {
+            position: relative;
+            text-align: center;
+            font-size: clamp(2.6rem, 9vw, 5.5rem);
+            font-weight: 200;
+            letter-spacing: -.045em;
+            line-height: 1;
+            background: linear-gradient(180deg, #fff 25%, #6a6a76 115%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: breathe 2.4s ease-in-out infinite;
+        }
+
+        .mark small {
+            display: block;
+            margin-top: 16px;
+            font-size: .68rem;
+            font-weight: 400;
+            letter-spacing: .34em;
+            text-transform: uppercase;
+            -webkit-text-fill-color: var(--muted);
+        }
+
+        @keyframes breathe {
+
+            0%,
+            100% {
+                opacity: .55
+            }
+
+            50% {
+                opacity: 1
+            }
+        }
+
+        .bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            z-index: 3;
+            overflow: hidden;
+            opacity: 0;
+            transition: opacity .3s
+        }
+
+        body.loading .bar {
+            opacity: 1
+        }
+
+        .bar::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            width: 40%;
+            background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
+            animation: sweep 1.1s var(--ease) infinite;
+        }
+
+        @keyframes sweep {
+            from {
+                transform: translateX(-100%)
+            }
+
+            to {
+                transform: translateX(250%)
+            }
+        }
+
+        /* error */
+        .error {
+            position: absolute;
+            inset: 0;
+            z-index: 4;
+            display: none;
+            place-items: center;
+            padding: 24px;
+            background: var(--bg)
+        }
+
+        body.failed .error {
+            display: grid
+        }
+
+        body.failed .loader {
+            opacity: 0;
+            visibility: hidden
+        }
+
+        .card {
+            width: min(420px, 100%);
+            padding: 28px;
+            border-radius: 20px;
+            text-align: center;
+            background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .01)), var(--panel);
+            border: 1px solid var(--line);
+            box-shadow: 0 30px 80px -30px rgba(0, 0, 0, .8);
+            animation: pop .5s var(--ease) both;
+        }
+
+        .card h2 {
+            font-size: 1.15rem;
+            font-weight: 500;
+            letter-spacing: -.01em
+        }
+
+        .card p {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: .88rem;
+            line-height: 1.55
+        }
+
+        .card code {
+            display: block;
+            margin-top: 14px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid var(--line);
+            color: #a9a9b6;
+            font: .72rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+            word-break: break-all;
+            text-align: left;
+        }
+
+        .btn {
+            margin-top: 20px;
+            padding: 11px 24px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, .12);
+            background: rgba(255, 255, 255, .04);
+            font-size: .85rem;
+            letter-spacing: .02em;
+            transition: border-color .25s, background .25s, transform .25s var(--ease);
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            background: color-mix(in srgb, var(--accent) 14%, transparent);
+            transform: translateY(-2px)
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 3px
+        }
+
+        @keyframes pop {
+            from {
+                opacity: 0;
+                transform: translateY(12px) scale(.98)
+            }
+
+            to {
+                opacity: 1;
+                transform: none
+            }
+        }
+
+        @media (prefers-reduced-motion:reduce) {
+
+            *,
+            *::before,
+            *::after {
+                animation: none !important;
+                transition: none !important
+            }
+
+            #frame {
+                filter: none;
+                transform: none
+            }
+        }
+
+        :root[data-motion=reduced] *,
+        :root[data-motion=reduced] *::before,
+        :root[data-motion=reduced] *::after {
+            animation: none !important;
+            transition: none !important
+        }
+
+        :root[data-motion=reduced] #frame {
+            filter: none;
+            transform: none
+        }
+    </style>
+</head>
+
+<body class="loading">
+
+    <div class="bar" aria-hidden="true"></div>
+
+    <div class="loader" role="status" aria-live="polite">
+        <div class="mark">silence<small>loading</small></div>
+    </div>
+
+    <div class="error" role="alert">
+        <div class="card">
+            <h2>couldn't load the page</h2>
+            <p>It didn't come back from the CDN or from this site. Check your connection, or the repo settings in <code
+                    style="display:inline;margin:0;padding:1px 6px">index.html</code>.</p>
+            <code id="fail-url"></code>
+            <button class="btn" id="retry">try again</button>
+        </div>
+    </div>
+
+    <iframe id="frame" title="silence"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock allow-modals allow-downloads allow-orientation-lock"
+        allow="fullscreen; gamepad; autoplay; clipboard-write; accelerometer; gyroscope" allowfullscreen
+        referrerpolicy="no-referrer"></iframe>
+
+    <script>
+        (() => {
+            /* ───────── config ───────── */
+            // Pages are fetched from jsDelivr:
+            //   https://cdn.jsdelivr.net/gh/<repo>@<ref>/<dir><page>.html
+            // If that fails (or on localhost) they come from this site's own /pages folder.
+            const CONFIG = {
+                repo: "YOUR_USER/YOUR_REPO",
+                ref: "main",          // branch, tag or commit SHA (a SHA skips CDN cache lag)
+                dir: "pages/",
+                home: "index",
+                timeout: 8000,
+            };
+            const CDN = `https://cdn.jsdelivr.net/gh/${CONFIG.repo}@${CONFIG.ref}/`;
+            const LOCAL = new URL("./", location.href).href;
+            const DEV = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+
+            const $ = s => document.querySelector(s);
+            const frame = $("#frame");
+            const cache = new Map();
+            let token = 0, pageTitle = "silence";
+
+            /* ───────── settings ─────────
+               The settings page talks to this through  window.parent.silence.
+               Stored in localStorage on this origin; applied to the shell and to
+               whichever page is currently in the frame. */
+            const KEY = "silence:settings";
+            const PRESETS = {                       // name: [accent, accent2]
+                violet: ["#8b7cff", "#5ce1c6"],
+                ocean: ["#5cb8ff", "#8b7cff"],
+                mint: ["#5ce1c6", "#5cb8ff"],
+                rose: ["#ff7aa8", "#f3b562"],
+                amber: ["#f3b562", "#ff7aa8"],
+                lime: ["#b6e86b", "#5ce1c6"],
+            };
+            const DENSITY = { compact: "165px", comfortable: "210px", large: "280px" };
+            const DEFAULTS = { accent: "violet", density: "comfortable", motion: "full", title: "" };
+
+            const sanitize = s => {
+                s = s && typeof s === "object" ? s : {};
+                return {
+                    accent: Object.hasOwn(PRESETS, s.accent) ? s.accent : DEFAULTS.accent,
+                    density: Object.hasOwn(DENSITY, s.density) ? s.density : DEFAULTS.density,
+                    motion: s.motion === "reduced" ? "reduced" : "full",
+                    title: typeof s.title === "string" ? s.title.slice(0, 60) : "",
+                };
+            };
+            const read = () => {
+                try { return sanitize(JSON.parse(localStorage.getItem(KEY) || "{}")); }
+                catch { return { ...DEFAULTS }; }
+            };
+            const write = s => { try { localStorage.setItem(KEY, JSON.stringify(sanitize(s))); } catch { } };
+
+            const roots = () => {
+                const r = [document.documentElement];
+                try { const d = frame.contentDocument; if (d && d.documentElement) r.push(d.documentElement); } catch { }
+                return r;
+            };
+            function apply() {
+                const s = read(), [a, b] = PRESETS[s.accent];
+                for (const root of roots()) {
+                    root.style.setProperty("--accent", a);
+                    root.style.setProperty("--accent2", b);
+                    root.style.setProperty("--card-min", DENSITY[s.density]);
+                    root.dataset.motion = s.motion;
+                }
+                document.title = s.title.trim() || pageTitle;
+            }
+            window.silence = { read, write, apply, presets: PRESETS, defaults: DEFAULTS };
+            apply();
+
+            /* ───────── fetching ───────── */
+            const pageFromHash = () => {
+                const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+                return /^[\w-]+$/.test(h) ? h : CONFIG.home;
+            };
+            const sources = name => {
+                const cdn = { url: `${CDN}${CONFIG.dir}${name}.html`, css: `${CDN}style.css` };
+                const local = { url: `${LOCAL}${CONFIG.dir}${name}.html`, css: `${LOCAL}style.css` };
+                return DEV ? [local, cdn] : [cdn, local];
+            };
+
+            async function timedFetch(url) {
+                const ctl = new AbortController();
+                const t = setTimeout(() => ctl.abort(), CONFIG.timeout);
+                try {
+                    const res = await fetch(url, { signal: ctl.signal, cache: "default" });
+                    if (!res.ok) throw new Error(res.status);
+                    return await res.text();
+                } finally { clearTimeout(t); }
+            }
+
+            // jsDelivr serves .html as text/plain, so the page can't be iframed by URL.
+            // Fetch the source and hand it to the frame as srcdoc. Pages link
+            // "../style.css", which means nothing inside a srcdoc, so point it at the
+            // same place the page itself came from.
+            async function getPage(name) {
+                if (cache.has(name)) return cache.get(name);
+                let lastErr;
+                for (const src of sources(name)) {
+                    try {
+                        const html = (await timedFetch(src.url))
+                            .replace(/href=(["'])\.\.\/style\.css\1/g, () => `href="${src.css}"`);
+                        cache.set(name, html);
+                        return html;
+                    } catch (e) { lastErr = e; }
+                }
+                throw lastErr;
+            }
+
+            const setState = s => {
+                document.body.classList.remove("loading", "ready", "failed");
+                document.body.classList.add(s);
+            };
+
+            /* ───────── load ───────── */
+            async function load(name) {
+                const my = ++token;
+                setState("loading");
+                frame.removeAttribute("srcdoc");
+                try {
+                    const html = await getPage(name);
+                    if (my !== token) return;
+                    frame.srcdoc = html;
+                } catch {
+                    if (my !== token) return;
+                    $("#fail-url").textContent = sources(name)[0].url;
+                    setState("failed");
+                }
+            }
+
+            frame.addEventListener("load", () => {
+                if (!frame.hasAttribute("srcdoc")) return;
+                const doc = frame.contentDocument;
+                if (!doc) return;
+
+                pageTitle = doc.title || "silence";
+                apply();                                   // accent, card size, motion, tab title
+
+                // keep navigation inside the shell
+                doc.addEventListener("click", e => {
+                    const a = e.target.closest && e.target.closest("a[href]");
+                    if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+                    const href = a.getAttribute("href");
+
+                    if (/^(https?:)?\/\//i.test(href) || /^(mailto|tel):/i.test(href)) {
+                        a.target = "_blank"; a.rel = "noopener noreferrer"; return;
+                    }
+                    if (href.startsWith("#") || href === "") return;
+
+                    e.preventDefault();
+                    const name = href.split("#")[0].split("?")[0].split("/").pop().replace(/\.html$/i, "") || CONFIG.home;
+                    const next = name === CONFIG.home ? "" : `#/${name}`;
+                    if ((location.hash || "") === next) return;
+                    location.hash = next;
+                });
+
+                requestAnimationFrame(() => setState("ready"));
+            });
+
+            addEventListener("hashchange", () => load(pageFromHash()));
+            $("#retry").addEventListener("click", () => { cache.clear(); load(pageFromHash()); });
+
+            load(pageFromHash());
+        })();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>silence · settings</title>
+    <meta name="theme-color" content="#08080a">
+    <link rel="stylesheet" href="../style.css">
+</head>
+
+<body>
+    <header>
+        <div class="wrap">
+            <nav>
+                <a class="logo" href="../index.html">silence</a>
+                <div class="links">
+                    <a href="index.html">games</a>
+                    <a href="soundboard.html">soundboard</a>
+                    <a href="forms.html">forms</a>
+                    <a class="on" href="settings.html">settings</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main class="wrap narrow stack">
+        <section class="head">
+            <h1>settings</h1>
+            <p>saved in this browser only. changes apply instantly.</p>
+        </section>
+
+        <div id="missing" class="panel" hidden>
+            <p style="color:var(--muted);font-size:.9rem;line-height:1.55">
+                settings are controlled by the site shell. open this page from the main site (index.html) instead of
+                directly.
+            </p>
+        </div>
+
+        <div id="app" hidden>
+            <section class="panel">
+                <h2>appearance</h2>
+
+                <div class="row">
+                    <div>
+                        <div class="t">Accent</div>
+                        <div class="d">Highlights, focus rings and glows.</div>
+                    </div>
+                    <div class="swatches" id="sw" role="group" aria-label="Accent colour"></div>
+                </div>
+
+                <div class="row">
+                    <div>
+                        <div class="t">Card size</div>
+                        <div class="d">How big the game tiles are.</div>
+                    </div>
+                    <div class="seg" id="density">
+                        <button type="button" data-v="compact">compact</button>
+                        <button type="button" data-v="comfortable">comfortable</button>
+                        <button type="button" data-v="large">large</button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div>
+                        <div class="t">Reduce motion</div>
+                        <div class="d">Turns off animations and transitions.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="motion"
+                            aria-label="Reduce motion"><span></span></label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>browser tab</h2>
+                <div class="field">
+                    <label for="title">Tab title</label>
+                    <input id="title" type="text" maxlength="60" placeholder="leave blank to use the page name">
+                    <div class="hint"><span>overrides what the tab says on every page.</span></div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>reset</h2>
+                <div class="row">
+                    <div>
+                        <div class="t">Restore defaults</div>
+                        <div class="d">Puts every setting above back how it started.</div>
+                    </div>
+                    <button class="btn sm danger" id="reset" type="button">reset</button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <div class="wrap"><span>silence</span><span>stored locally</span></div>
+    </footer>
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+        (() => {
+            const $ = s => document.querySelector(s);
+            const S = window.parent !== window && window.parent.silence;
+            if (!S) { $("#missing").hidden = false; return; }
+            $("#app").hidden = false;
+
+            let cur = S.read(), tt;
+            const toast = m => {
+                const t = $("#toast");
+                t.textContent = m; t.classList.add("show");
+                clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 1400);
+            };
+
+            // swatches come from the shell so there's one source of truth
+            const sw = $("#sw");
+            Object.entries(S.presets).forEach(([key, [a, b]]) => {
+                const el = document.createElement("button");
+                el.type = "button"; el.className = "swatch"; el.dataset.v = key; el.title = key;
+                el.style.background = `linear-gradient(135deg, ${a}, ${b})`;
+                sw.append(el);
+            });
+
+            function sync() {
+                document.querySelectorAll(".swatch").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === cur.accent));
+                document.querySelectorAll("#density button").forEach(b => b.classList.toggle("on", b.dataset.v === cur.density));
+                $("#motion").checked = cur.motion === "reduced";
+                if (document.activeElement !== $("#title")) $("#title").value = cur.title;
+            }
+            function save(patch, quiet) {
+                cur = { ...cur, ...patch };
+                S.write(cur); S.apply(); sync();
+                if (!quiet) toast("saved");
+            }
+
+            sw.addEventListener("click", e => { const b = e.target.closest(".swatch"); if (b) save({ accent: b.dataset.v }); });
+            $("#density").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ density: b.dataset.v }); });
+            $("#motion").addEventListener("change", e => save({ motion: e.target.checked ? "reduced" : "full" }));
+            let td;
+            $("#title").addEventListener("input", e => { clearTimeout(td); td = setTimeout(() => save({ title: e.target.value }), 250); });
+            $("#reset").addEventListener("click", () => { cur = { ...S.defaults }; S.write(cur); S.apply(); sync(); toast("defaults restored"); });
+
+            sync();
+        })();
+    </script>
+</body>
+
+</html>

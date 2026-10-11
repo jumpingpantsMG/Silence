@@ -1,0 +1,7 @@
+worker.js
+wrangler.toml
+.assetsignore
+.dev.vars
+.git
+.wrangler
+node_modules

@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>silence · games</title>
+    <meta name="description" content="silence. play quietly.">
+    <meta name="theme-color" content="#08080a">
+    <link rel="stylesheet" href="../style.css">
+</head>
+
+<body>
+    <header>
+        <div class="wrap">
+            <nav>
+                <a class="logo" href="../index.html">silence</a>
+                <div class="links">
+                    <a class="on" href="index.html">games</a>
+                    <a href="soundboard.html">soundboard</a>
+                    <a href="forms.html">forms</a>
+                    <a href="settings.html">settings</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <section class="hero">
+            <h1>play quietly.</h1>
+            <p>a calm, fast library of games. no noise.</p>
+            <label class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m20 20-3.5-3.5" />
+                </svg>
+                <input id="q" type="search" placeholder="search games" autocomplete="off" spellcheck="false">
+                <kbd>/</kbd>
+            </label>
+        </section>
+
+        <div class="bar">
+            <div class="chips" id="chips">
+                <button class="chip on" data-t="all">all</button>
+                <button class="chip" data-t="html5">html5</button>
+                <button class="chip" data-t="flash">flash</button>
+            </div>
+            <span class="count" id="count"></span>
+        </div>
+
+        <section class="grid" id="grid"></section>
+        <p class="empty" id="empty">nothing here. try another search.</p>
+    </main>
+
+    <footer>
+        <div class="wrap"><span>silence</span><span>← back leaves a game</span></div>
+    </footer>
+
+    <div class="player" id="player" role="dialog" aria-modal="true" aria-label="Game player">
+        <div class="pbar">
+            <button class="pbtn" id="p-close" title="Close (Esc)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                    stroke-linecap="round">
+                    <path d="M15 5l-7 7 7 7" />
+                </svg><span>back</span>
+            </button>
+            <h2 id="p-title"></h2>
+            <button class="pbtn" id="p-reload" title="Reload">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12a9 9 0 1 1-3-6.7" />
+                    <path d="M21 4v5h-5" />
+                </svg><span>reload</span>
+            </button>
+            <button class="pbtn" id="p-full" title="Fullscreen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+                </svg><span>fullscreen</span>
+            </button>
+        </div>
+        <div class="pframe" id="pframe">
+            <div class="spin" id="spin"></div>
+        </div>
+    </div>
+
+    <!--
+  Catalog. Format: name|folder|cover|f   (f = flash)
+  Lines after "#non-semag" live in the non-semag/ folder, everything else in semag/.
+-->
+    <script type="text/plain" id="data">
+1|1|cover.png
+1 on 1 Soccer|1on1soccer|logo.jpg|f
+10 Minutes Till Dawn|10minutestilldawn|splash.png
+13 Days of Hell|13|cover.png|f
+1v1.lol|1v1lol|splash.png
+2048|2048|icon.png
+2D Rocket League|2drocketleague|unnamed.png
+3 Lines|3line|cover.png|f
+3D Space Cadet Pinball|pinball|cover.png
+60s Burger Run|60sburgerrun|icon.png
+9007199254740992|9007199254740992|cover.png
+A Dance of Fire & Ice|adofai|splash.png
+A Dark Room|adarkroom|favicon.ico
+Achievement Unlocked|achieveunlocked|icon.png|f
+Achievement Unlocked 2|achieveunlocked2|icon.png|f
+Adventure|adventure|cover.png
+Adventure Capitalist|adventure-capitalist|logo.webp
+Age of War|ageofwar|warofage.jpg|f
+Age of War 2|aow2|cover.png|f
+Amazing Rope Police|amazing-rope-police|splash.jpeg
+Among Us|amongus|amgojs]_.png
+Among Us (better)|amongusnew|amgojs]_.png
+Animal Crossing Wild World|animalcrossingwildworld|animalcrossingwildworld.png
+Avalanche|avalanche|icon.png|f
+Awesome Tanks|awesometanks|cover.png
+Backrooms 2D|2d|cover.png
+Bad Ice Cream|badicecream|bad-ice-cream.png
+Bad Ice Cream 2|badicecream2|bad-ice-cream-2.png
+Bad Ice Cream 3|badicecream3|bad-ice-cream-3.png
+Bad Piggies|badpiggies|badpiggies.png|f
+Bad Time Simulator|badtimesimulator|icon-114.png
+Baldi's Basics|baldis-basics|splash.png
+Balloon Run|bal|cover.png
+Banjo Kazooie|banjokazooie|banjokazooie.png
+Basket Bros|basketbros|thumb.jpg
+Basket Random|basketrandom|test.png
+Basketball Stars|basketball-stars|icon.png
+Bike Champ|bikechamp|logo.png|f
+Bike Champ 2|bikechamp2|logo.jpg|f
+Bit Planes|bit-planes|bitplanes.png
+Bitlife|bitlife|bitlife.png
+Block Zappers 3|blockzappers|logo.png|f
+Blood Tournament|bloodtournament|blood-tournament.jpg
+Bloons Tower Defense|btd|logo.webp|f
+Bloons Tower Defense 2|btd2|logo.webp|f
+Bloons Tower Defense 3|btd3|icon.png|f
+Bloons Tower Defense 4|btd4|logo.jpg|f
+Bloons Tower Defense 5|btd5|wogo.png|f
+Bloons Tower Defense 6|btd6|uwu.png
+Bob the Robber 2|bobtherobber2|icon.png
+Bouncy Flappy|bounce|cover.png
+Boxing Physics 2|boxingphysics2|icon.png
+Boxing Random|boxingrandom|512x512.jpg
+Bubble Shooter|bub|cover.png|f
+Burger and Frights|burgerandfrights|icon.png
+Burrito Bison|burritobison|Build/logo.png
+Bus & Subway Runner|subway|cover.png
+Celeste|celeste|icon.png
+Cell Machine|cell-machine|img/icon.png
+Champion Island|championisland|icon.png
+Chess|chess|icon.png
+Chibi Knight|chibiknight|icon.png|f
+CircloO|circloo|icon.png
+Clicker Heroes|clickerheroes|clicker-heroes.png
+Cluster Rush|cluster-rush|icon.jpg
+Color Switch|colorswitch|colorswitch.png
+Commodore 64 Clicker|commodoreclicker|test.jpg
+Connect Four|c4|cover.png
+Cookie Clicker|cookieclicker|img/perfectCookie.png
+Copter|copter|cover.png|f
+Corporation Inc|corp|cover.png|f
+Counter Strike: DS|cds|cover.png
+Crazy Flasher 2|2flash|cover.png|f
+Crazy Flasher 3|3flash|cover.png|f
+Crazy Flasher 4|4flash|cover.png|f
+Crazy Flasher 5|5flash|cover.png|f
+Crazy Flasher 6|6flash|cover.png|f
+Crazy Taxi|crtaxi|cover.png
+Crazy Tunnel 3D|crazy|cover.png
+Creeper Craft|creepercraft|cover.png|f
+Crimson Fantasia|crimsonfantasia|14qAOu.png
+CrossNRoad|crossnroad|cover.png
+Crossy Road|crossyroad|chicken.png
+CSGO Case Clicker|csgoclicker|images/case1.png
+Cubefield|cubefield|assets/unnamed.png
+Cut The Rope|cuttherope|icon.png
+Cut The Rope Holiday|cuttherope-holiday|Holiday_Gift.webp
+Dadish|dadish|favicon.png
+Dadish 2|dadish2|favicon.png
+Dadish 3|dadish3|splash.png
+Dante|dante|icon.png
+Death Run 3D|death-run-3d|img/death.png
+Deepest Sword|deepestsword|logo.png
+Dino|dino|icon.png
+Doge Miner|dogeminer|img/dogeminer_300x300.png
+Donkey Kong|kong|cover.png
+Donkey Kong 64|donkeykong64|donkeykong64.png
+Doodle Jump|doodlejump|icon.png
+DOOM|doom|logo.png
+Doom 64|doom64|doom64.png
+Dragon Ball Devolution|dragonballdevolution|images.jpeg
+Draw Climber|drawclimber|assets/gameLogo.png
+Drift Boss|drift-boss|icon.png
+Drift Hunters|drifthunters|icon.png
+Drift King|king|cover.png
+Drift Mania|drift|cover.png
+Drive Mad|drivemad|icons/icon-128.png
+Driving Force 4|driving|cover.png|f
+Duck Life 1|ducklife1|ducklife1.png
+Duck Life 2|ducklife2|ducklife2.png
+Duck Life 3|ducklife3|ducklife3.png
+Duck Life 4|ducklife4|icon.png
+Duck Life 5|ducklife5|ducklife5.png|f
+Duck Life 6|ducklife6|ducklife5.png
+Earn to Die|ern|cover.png|f
+Factory Balls|factoryballs|fac.png|f
+Factory Balls Forever|factoryballsforever|fac.png
+Fancy Pants Adventures|fancypantsadventures|fpa.webp|f
+Fancy Pants Adventures 2|fancypantsadventures2|fpa2.avif|f
+Final Ninja|final|cover.png|f
+Fireboy & Watergirl 1|fireboywatergirl|icon.png
+Fireboy & Watergirl 2|fireboywatergirl2|Untitled.jpeg
+Fireboy & Watergirl 3|fireboywatergirl3|icon.png
+Fireboy & Watergirl 4|fireboywatergirl4|300.jpg
+Five Nights at Freddy's|fnaf|splash.jpg
+Five Nights at Freddy's 2|fnaf2|project/splash.webp
+Five Nights at Freddy's 3|fnaf3|project/splash.webp
+Five Nights at Freddy's 4|fnaf4|project/splash.webp
+Flappy 2048|flap|cover.png
+Flappy Bird|flappybird|icon.png
+Flappy Copter|flappycopter|cover.png
+Flappy Dino|fld|cover.png
+Flappy Race|flappyrace|cover.png
+Flippy Fish|flippyfish|icon.png
+Fort@dmin|fort|cover.png
+Friday Night Funkin|fridaynightfunkin|favicon.png
+Friday Night Funkin: Mid Fight Masses|fnfmidfight|fnfmidfight.png
+Frogger|frogger|cover.png|f
+Fruit Cuts 3D|fruit|cover.png
+Fruit Ninja|fruitninja|FruitNinjaTeaser.jpg
+Funny Ball Game|funnyballgame|ball.jpg
+Funny Mad Racing|funnymadracing|logo.webp
+Funny Shooter|funnyshooter|icon.jpeg
+Funny Shooter 2|funnyshooter2|894abba63a6b23fed823f404831f444f.jpeg
+Game Maker Doodle|gamemaker|images.jpeg
+Geometry Dash Lite|gdlite|logo.png
+Geometry Dash Remastered|geodashrm|cover.png
+Geometry Dash Sky|geodashsky|cover.png
+Geometry Jump|geojump|cover.png
+Geometry Meltdown|geomelt|cover.png
+Geometry Rash|geometryrash|icon-114.png
+Getaway Shooter|getawayshooter|Untitled.jpeg
+Gladihoppers|gladihoppers|cover.png
+Glassworks|glass|cover.png|f
+Gloom|gloom|cover.png|f
+Gold Digger FRVR|golddiggerfrvr|images.jpeg
+Goldeneye 007|goldeneye|goldeneye007.png
+Grand Shift Auto|gsa|cover.png
+Grand Theft Grotto|gtg|cover.png|f
+Grand Truckismo|grandtruckismo|cover.png|f
+GTA 1|gta1|cover.png
+GTA 2|gta2|cover.png
+GTA: Advance|advgta|cover.png
+Guilty Gear|guiltygear|ggx.jpg
+Gun Knight|gunknight|cover.png
+Gun Mayhem|gunmayhem|icon.png|f
+Gun Mayhem 2|gunmayhem2|icon.png|f
+Gun Mayhem Redux|gunmayhemredux|icon.png|f
+Gunbrick|brick|cover.png|f
+Gunfest|fest|cover.png
+Halloween 2016|halloween2016|logo.png
+Happy Wheels|happywheels|Untitled.jpeg|f
+Headcase|headcase|cover.png|f
+Helix Jump|helixjump|gameIcon.png
+Henry Stickmin - Breaking the Bank|breakingthebank|balling.avif|f
+Henry Stickmin - Escaping the Prison|escapingtheprison|pwison.avif|f
+Henry Stickmin - Fleeing the Complex|fleeingthecomplex|flee.jpg|f
+Henry Stickmin - Infiltrating the Airship|infiltratingtheairship|air.avif|f
+Henry Stickmin - Stealing the Diamond|stealingthediamond|diamante.avif|f
+HexGL|hexgl|icon_128.png
+Hextris|hextris|images/icons/apple-touch-152.png
+Hill Climb Racing|hillclimbracing|cover.png
+Hill Climb Racing 2|hillclimbracing2|cover.png
+Hobo 1|1hobo|cover.png|f
+Hobo 2|2hobo|cover.png|f
+Hobo 3|3hobo|cover.png|f
+Hobo 4|4hobo|cover.png|f
+Hobo 5|5hobo|cover.png|f
+Hobo 6|6hobo|cover.png|f
+Hobo 7|7hobo|cover.png|f
+hole.io|holeio|feature800x470.png
+House of Hazards|houseofhazards|favicon.ico
+I Wanna Be Thy Copy|iwbtc|icon.png
+Idle Breakout|idlebreakout|image.png
+Idle Research|idleresearch|cover-1660205761867.png
+InfiniteCraft|infi|cover.png
+Jake's Jingle Quest|jake|cover.png
+Jetpack Joyride|jetpackjoyride|logo.jpeg
+justfall.lol|justfalllol|unnamed.png
+Karlson|karlson|cover.png
+Karlson't|karlsont|cover.png
+Kerosene Client|keroseneclient|cover.png
+Kick That Buddy|kickthatbuddy|cover.png
+Knife Hit|knifehit|icon.png
+Last Horizon|lasthorizon|wogo owo.jpg
+Lazy Jump 3D|lazyjump3d|icon.png
+Learn to Fly|learntofly|icon.png|f
+Learn to Fly 2|learntofly2|logo.jpg|f
+Learn to Fly Idle|learntoflyidle|icon.jpg|f
+Legend of Zelda - Ocarina of Time|ocarinaoftime|oc.jpg
+Line Rider|linerider|boosh.png
+Little Alchemy|littlealchemy|images/192-alpha.png
+Lows Adventures 2|lowsadventures2|icon.png
+Madalin Cars|madalincars|icon.png
+Majora's Mask|majorasmask|majorasmask.png
+Mario|mario|icon.png
+Mario Kart DS|mariokartds|mariokartds.png
+Mario Party|marioparty|marioparty.png
+Mario Party 2|marioparty2|marioparty2.png
+Mario Party 3|marioparty3|marioparty3.png
+Mario Party DS|mariopartyds|mariopartyds.png
+Meteor Game|meteor|cover.png
+Metroid: Zero Mission|metroidzeromission|zero.jpeg
+Mindustry|mind|cover.png|f
+Mine Blocks|minors|cover.png|f
+Minecraft Games|eaglercraft|image.png
+Minesweeper|minesweeper|cover.png|f
+Monkey Mart|monkeymart|unnamed.png
+Monster Tracks|monstertracks|webapp/cover.jpg
+Moto X3M|motox3m|splash.jpg
+Moto X3M Pool Party|motox3m-pool|splash.jpg
+Moto X3M Spooky|motox3m-spooky|icon.png
+Moto X3M Winter|motox3m-winter|download.jpeg
+Mutiny|mut|cover.png|f
+n-gon|ngon|favicon.ico
+Nintendogs|nintendogs|nintendogs.png
+Nitrome Must Die|nitme|cover.png|f
+Nut Simulator|nutsim|images/icon.png
+Obby, jump!|obby|cover.png
+Offline Paradise|offlineparadise|icon.png
+osu!|osu|icon.png
+osu!mania|osumania|mania.jpg
+ovo|ovo|ovo3.png
+Pacman|pacman|icon.png|f
+Pako Highway|pako|cover.png
+Pandemic|pandemic|sddefault.jpg|f
+Pandemic 2|pandemic2|pan2.webp|f
+Papas Bakeria|papasbakeria|papasbakeria.png|f
+Papas Burgeria|papasburgeria|images.jpeg|f
+Papas Cheeseria|papascheeseria|papascheeseria.png|f
+Papas Donuteria|papasdonuteria|papasdonuteria.png|f
+Papas Freezeria|papasfreezeria|images.jpeg|f
+Papas Pancakeria|papaspancakeria|papaspancakeria.png|f
+Papas Pastaria|papaspastaria|papaspastaria.png|f
+Papas Pizzeria|papaspizzeria|images.jpeg|f
+Papas Scooperia|papasscooperia|papasscooperia.png|f
+Papas Sushiria|papassushiria|papassushiria.png|f
+Papas Tacomia|papastacomia|papastacomia.png
+Papas Wingeria|papaswingeria|papaswingeria.png|f
+Paper Mario|papermario|papermario.png
+paper.io|paperio|icon.png
+Pickcrafter|pick|cover.png
+Pizza Tower|pizzatower|images/menubg.png
+Plants vs. Zombies|pvz|cover.png|f
+Plunger|plu|cover.png|f
+Pokemon|pokemon|logo.jpg
+Polytrack|polytrack|cover.jpg
+Pong|pong|cover.png
+Pool|pool|cover.png|f
+POOM|poom|cover.png|f
+Protektor|tekpro|cover.png
+Putin on the Ritz|ritz|cover.png
+Pyongyang Racer|pyong|cover.png|f
+Quake 3|quake3|cover.png
+Racer|racer|cover.png
+Real Flying Truck 3D|trk|cover.png
+Recoil|recoil|cover.png
+Red Ball 1|redball|cover.png|f
+Red Ball 3|redball3|redball3.png|f
+Red Ball 4|redball4|redball4.webp|f
+Red Ball 4 Vol 2|redball4vol2|redball4vol2.webp|f
+Red Ball 4 Vol 3|redball4vol3|redball4vol3.webp|f
+Retro Bowl|retrobowl|img/icon.jpg
+Retro Bowl College|retrobowlcollege|unnamed.png
+Riddle School|riddleschool|RiddleSchool2.png|f
+Riddle School 2|riddleschool2|icon.png|f
+Riddle School 3|riddleschool3|riddle-school-3.webp|f
+Riddle School 4|riddleschool4|Untitled.jpeg|f
+Riddle School 5|riddleschool5|Untitled.jpeg|f
+Riddle Transfer|riddleschooltransfer|Untitled.jpeg|f
+Riddle Transfer 2|riddleschooltransfer2|aUntitled.jpeg|f
+Rise Higher|risehigher|media/graphics/promo/Icons/128x128.png
+Robo Run|robo|cover.png
+Rocket Bot Royale|rocket|cover.png
+Rocket League|rocketleague|splash.webp
+Rooftop Snipers|rooftopsnipers|logo.png
+Rooftop Snipers 2|rooftopsnipers2|icon.png
+Rough Dino|roughdino|cover.png
+Run|run|icon.jpeg|f
+Run 2|run2|icon.jpg|f
+Run 3|run3|icon.jpeg|f
+Run 3 Editor|editor|cover.png
+Russian Car Driver|russiancardriver|russian-car-driver.webp
+Sand Game|sand|icon.png
+Sandboxels|box|cover.png
+Sandtrix|sandtrix|assets/sprites/appicon.png
+Shape Shipper|shape|cover.png
+Shapez|shapez|cover.png
+SimCity|simcity|cover.png
+SimCity 2000|2000si|cover.png
+Simon|simon|cover.png|f
+Skateboarding Simulator|skate|cover.png
+Skibidi 1 v 100|skibiditoilet|logo.png
+Skibidi Toilet Attack|skibiditoiletattack|logo.png
+Skywire VIP (Extended)|sky|cover.png|f
+Slope|slope|slope4.jpeg
+Slope 2|slope2|slope-2-logo.png
+Slope 3|slope3|cover.png
+Slope Ball|slope-ball|icon.jpg
+Slope City|ballslo|cover.png
+Snake|snake|snake.png
+Snotput|snot|cover.png|f
+Snow Rider 3D|snowrider3d|snow.png
+Snowball.io|snow|cover.png
+Soccer Random|soccerrandom|test.png
+Solitaire|solitaire|cover.png|f
+Sonic & Knuckles|knuck|cover.png
+Sonic 1|sonic|cover.svg
+Sonic 2|2sonic|cover.svg
+Sonic 3|3sonic|cover.png
+Sonic Advance|sadvance|cover.png
+Sonic Advance 2|2sadv|cover.png
+Sonic Advance 3|3sadv|cover.png
+Spank the Monkey|spankthemonkey|cover.png|f
+Splash Dash Racing|splashanddash|cover.png|f
+Sprinter|sprinter|icon.jpeg|f
+Stack|stack|icon.png
+Star Clicker|star|cover.png
+Star Fox 64|starfox64|starfox64.png
+state.io|stateio|icon.webp
+Stickman Boost|stickmanboost|base/img1.jpg
+Stickman Climb|stickmanclimb|icon.avif
+Stickman Golf|stickmangolf|gold.png
+Stickman Hook|stickman-hook|icon.jpg
+Subway Surfers|subway-surfers-ny|NewYorkIcon.png
+Sudoku|sudo|cover.png
+Super Auto Pets|auto|cover.png
+Super Mario 63|mario63|cover.png|f
+Super Mario 64|supermario64|icon.png
+Super Mario 64 DS|supermario64ds|supermario64ds.png
+Super Meat Boy|supermeatboy|icon.png|f
+Super Smash Bros|supersmashbros|logo.jpg
+Super Smash Flash|supersmashflash|ssf.jpg|f
+Superhero Drop|superhero|cover.png
+Superhot|superhot|icon.png
+Talking Tom Cat|tom2|cover.png|f
+Tappy Plane|tappyplane|cover.png
+Temple of Boom|temple|cover.png|f
+Temple Run 2|templerun2|img/icons/icon-128x128.png
+Terri-Fried|terrifried|cover.png
+Territorial.io|territorialio|territorialio.png
+Tetris|tetris|icon.png|f
+The Binding of Issac|tboi|cover.png|f
+The Black Man|black|cover.png
+The Enchanted Cave 2|enchantedcave2|icon.png|f
+The Final Earth 2|thefinalearth2|icons/favicon.png
+The Gummibär Game|gum|cover.png|f
+The Heist|heist|cover.png|f
+The Impossible Game|theimpossiblegame|image.jpg|f
+The Impossible Quiz|theimpossiblequiz|tiq.avif|f
+The Minions: Resurrection|minion|cover.png
+The Oregon Trail|oregon|cover.png|f
+The Sims - Busting Out|bsims|cover.png
+Theme Hotel|themehotel|themehotel.png|f
+There Is No Game|thereisnogame|icon-256.png
+Thirty Dollar Website|thirtydollarwebsite|assets/🗿.png
+This Is The Only Level|thisistheonlylevel|logo.png|f
+This Is The Only Level 2|thisistheonlylevel2|icon.png|f
+Thumb Fighter|thumbfighter|thumbfighter.png
+Time Shooter|timeshooter1|logo.png
+Time Shooter 2|timeshooter2|ts2.jpg
+Time Shooter 3|timeshooter3|logo.png
+Tiny Fishing|tinyfishing|thumb.png
+Tomb of The Mask|tombofthemask|cover.png
+Totally Accurate Battle Simulator|tabs|unnamed.png
+Townscaper|townscaper|icon.png
+Train Surfers|train|cover.png
+Tron|tron|icon.png|f
+TU-46|tu46|tu-46.webp|f
+TU-95|tu95|tu-95.webp|f
+Tube Jumpers|tube-jumpers|cover.png
+Tunnel Rush|tunnelrush|tunnel.jpg
+Turbo Racing 3|turboracing3|cover.png
+Two Ball 3D|two|cover.png
+Ultimate Flash Sonic|flash|cover.png|f
+Unfair Mario|unfmar|cover.png|f
+Universal Paperclips|universal-paperclips|universal-paperclips.png
+Vex|vex|icon.png|f
+Vex 2|vex2|icon.png|f
+Vex 3|vex3|icon.png
+Vex 4|vex4|vex4.png
+Vex 5|vex5|icon.png
+Vex 6|vex6|icon.png
+Vex 7|vex7|icon.jpeg
+Virtual x86|v86|favicon.ico
+Wall Smash|wallsmash|icon.png
+WASM Doom|doom-wasm|cover.png|f
+Watermelon Game|watermelongame|assets/sprites/tittle.png
+We Become What We Behold|wbwwb|wbwwb.webp
+Weave Silk|weavesilk|icon.png
+WebGL Fluid Sim|fluidsim|icon.png
+webretro|webretro|assets/icons/icon204.png
+Wheely 1|whe|cover.png|f
+Wheely 2|whe2|cover.png|f
+Wheely 3|whe3|cover.png|f
+Wheely 4|whe4|cover.png|f
+Windows 98|windows98|cover.png|f
+Wordle|wordle|icon.png
+Wordle Bot|wordlebot|icon.png
+Worlds Hardest Game|worldshardestgame|icon.png|f
+Worlds Hardest Game 2|worldhardestgame2|the-worlds-hardest-game-2.jpg
+Wubzzy's Amazing Adventure|wubz|cover.png|f
+xx142-b2.exe|xx142-b2.exe|icon.png
+Yohoho.io|yohoho|cover.png
+Zombocalypse|zombocalypse|zombocalypse-2.webp|f
+#non-semag
+Cubes 2048.io|cubes2048.io|
+</script>
+
+    <script>
+        (() => {
+            /* ───────── config ───────── */
+            const R2 = "https://pub-31ddb721e92142be8b2deee228c36013.r2.dev";
+            // Each game lives at  {R2}/{bucket}/{folder}/index.html  with its cover next to it.
+
+            const $ = s => document.querySelector(s);
+            const grid = $("#grid"), q = $("#q"), count = $("#count"), empty = $("#empty");
+            const player = $("#player"), pframe = $("#pframe"), spin = $("#spin");
+
+            /* ───────── parse catalog ───────── */
+            let bucket = "semag";
+            const GAMES = [];
+            for (const raw of $("#data").textContent.split("\n")) {
+                const line = raw.trim();
+                if (!line) continue;
+                if (line.startsWith("#")) { bucket = line.slice(1).trim(); continue; }
+                const [name, dir, image, flag] = line.split("|");
+                GAMES.push({ name, dir, image: image || "", flash: flag === "f", bucket });
+            }
+            GAMES.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+
+            /* ───────── helpers ───────── */
+            const enc = p => p.split("/").map(encodeURIComponent).join("/");
+            const base = g => `${R2}/${g.bucket}/${enc(g.dir)}`;
+            const gameUrl = g => `${base(g)}/index.html`;
+            const coverUrl = g => g.image ? `${base(g)}/${enc(g.image)}` : "";
+            const hue = s => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
+            const initial = n => (n.match(/[a-z0-9]/i) || ["·"])[0].toUpperCase();
+
+            /* ───────── cards ───────── */
+            function card(g, i) {
+                const h = hue(g.name);
+                const el = document.createElement("button");
+                el.className = "card";
+                el.type = "button";
+                el.setAttribute("aria-label", `Play ${g.name}`);
+
+                const art = document.createElement("div");
+                art.className = "art";
+                const glow = document.createElement("div");
+                glow.className = "glow";
+                glow.style.background =
+                    `radial-gradient(120% 120% at 20% 0%, hsl(${h} 70% 45% / .55), transparent 60%),` +
+                    `radial-gradient(100% 100% at 100% 100%, hsl(${(h + 60) % 360} 70% 40% / .4), transparent 60%)`;
+                const letter = document.createElement("b");
+                letter.textContent = initial(g.name);
+                art.append(glow, letter);
+
+                const url = coverUrl(g);
+                if (url) {
+                    const blur = document.createElement("div");
+                    blur.className = "blur";
+                    const img = new Image();
+                    img.loading = "lazy";
+                    img.decoding = "async";
+                    img.alt = "";
+                    img.referrerPolicy = "no-referrer";
+                    img.onload = () => {
+                        blur.style.backgroundImage = `url("${url}")`;
+                        art.classList.add("loaded");
+                    };
+                    img.onerror = () => img.remove();
+                    img.src = url;
+                    art.prepend(blur);
+                    art.append(img);
+                }
+
+                const play = document.createElement("div");
+                play.className = "play";
+                play.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="#fff"><path d="M7 4v16l13-8z"/></svg>';
+
+                const meta = document.createElement("div");
+                meta.className = "meta";
+                const title = document.createElement("h3");
+                title.textContent = g.name;
+                meta.append(title);
+
+                el.append(art, play, meta);
+                if (g.flash) {
+                    const t = document.createElement("span");
+                    t.className = "tag";
+                    t.textContent = "flash";
+                    el.append(t);
+                }
+                el.addEventListener("click", () => open(g));
+                return el;
+            }
+
+            /* ───────── filter + render ───────── */
+            let type = "all", shown = [];
+            function render() {
+                const term = q.value.trim().toLowerCase();
+                shown = GAMES.filter(g =>
+                    (type === "all" || (type === "flash") === g.flash) &&
+                    g.name.toLowerCase().includes(term));
+                const frag = document.createDocumentFragment();
+                shown.forEach((g, i) => frag.append(card(g, i)));
+                grid.replaceChildren(frag);
+                empty.style.display = shown.length ? "none" : "block";
+                count.textContent = `${shown.length} game${shown.length === 1 ? "" : "s"}`;
+            }
+
+            $("#chips").addEventListener("click", e => {
+                const b = e.target.closest(".chip"); if (!b) return;
+                type = b.dataset.t;
+                document.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === b));
+                render();
+            });
+            let t;
+            q.addEventListener("input", () => { clearTimeout(t); t = setTimeout(render, 90); });
+
+            /* ───────── player ───────── */
+            let frame = null, current = null;
+            function open(g) {
+                current = g;
+                $("#p-title").textContent = g.name;
+                spin.style.display = "block";
+                frame?.remove();
+                frame = document.createElement("iframe");
+                frame.title = g.name;
+                frame.allow = "fullscreen; gamepad; autoplay; clipboard-write; accelerometer; gyroscope";
+                frame.allowFullscreen = true;
+                frame.setAttribute("sandbox",
+                    "allow-scripts allow-same-origin allow-pointer-lock allow-popups allow-forms allow-modals allow-downloads allow-orientation-lock");
+                frame.addEventListener("load", () => { spin.style.display = "none"; frame.focus(); });
+                frame.src = gameUrl(g);
+                pframe.append(frame);
+                player.classList.add("open");
+                document.body.classList.add("playing");
+            }
+            function close() {
+                if (!player.classList.contains("open")) return;
+                if (document.fullscreenElement) document.exitFullscreen?.();
+                player.classList.remove("open");
+                document.body.classList.remove("playing");
+                frame?.remove(); frame = null; current = null;
+            }
+            $("#p-close").addEventListener("click", close);
+            $("#p-reload").addEventListener("click", () => { if (current) open(current); });
+            $("#p-full").addEventListener("click", () => {
+                (frame || pframe).requestFullscreen?.().catch(() => { });
+            });
+
+            /* ───────── keys ───────── */
+            addEventListener("keydown", e => {
+                if (e.key === "Escape") { close(); q.blur(); return; }
+                if (player.classList.contains("open")) return;
+                if (e.key === "/" && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+                if (e.key === "Enter" && document.activeElement === q && shown[0]) open(shown[0]);
+            });
+
+            render();
+        })();
+    </script>
+</body>
+
+</html>
