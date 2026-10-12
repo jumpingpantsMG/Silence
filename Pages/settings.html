@@ -75,8 +75,68 @@
                 <h2>browser tab</h2>
                 <div class="field">
                     <label for="title">Tab title</label>
-                    <input id="title" type="text" maxlength="60" placeholder="leave blank to use the page name">
+                    <input id="title" type="text" maxlength="60" placeholder="blank = real page name">
                     <div class="hint"><span>overrides what the tab says on every page.</span></div>
+                    <div class="seg" id="titles" aria-label="Title presets">
+                        <button type="button" data-t="New Tab">new tab</button>
+                        <button type="button" data-t="Untitled document">untitled</button>
+                        <button type="button" data-t="Home">home</button>
+                        <button type="button" data-t="Notes">notes</button>
+                    </div>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Tab icon</div>
+                        <div class="d">Swaps the little icon in the tab.</div>
+                    </div>
+                    <div class="seg" id="icon">
+                        <button type="button" data-v="none">none</button>
+                        <button type="button" data-v="document">doc</button>
+                        <button type="button" data-v="folder">folder</button>
+                        <button type="button" data-v="calendar">cal</button>
+                        <button type="button" data-v="dot">dot</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>panic</h2>
+                <div class="row">
+                    <div>
+                        <div class="t">Panic key</div>
+                        <div class="d">One press locks the site and sends this tab to the page below. Works from any
+                            page here, not from inside a running game.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="panicOn"
+                            aria-label="Panic key on"><span></span></label>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Key</div>
+                        <div class="d" id="keyhint">Pick something you never type, like ` or Esc.</div>
+                    </div>
+                    <button class="btn sm" id="key" type="button">`</button>
+                </div>
+                <div class="field">
+                    <label for="panicUrl">Go to</label>
+                    <input id="panicUrl" type="text" maxlength="300" placeholder="https://www.google.com"
+                        autocomplete="off" spellcheck="false">
+                    <div class="hint"><span id="urlhint">any https:// address.</span></div>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">On-screen button</div>
+                        <div class="d">A small dim × in the bottom-left corner.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="panicBtn"
+                            aria-label="Show panic button"><span></span></label>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Test it</div>
+                        <div class="d">Does exactly what a real press does.</div>
+                    </div>
+                    <button class="btn sm danger" id="panicNow" type="button">panic now</button>
                 </div>
             </section>
 
@@ -88,6 +148,50 @@
                         <div class="d">Back to the typing test right now. Shortcut: Alt + Shift + L.</div>
                     </div>
                     <button class="btn sm" id="lock" type="button">lock now</button>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Lock when I leave the tab</div>
+                        <div class="d">Switching tabs or minimising locks it. This will also reset a game you were
+                            playing.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="lockHidden"
+                            aria-label="Lock when tab hidden"><span></span></label>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Open in about:blank</div>
+                        <div class="d">Opens the site in a blank-address window. Allow pop-ups if nothing happens.</div>
+                    </div>
+                    <button class="btn sm" id="cloak" type="button">open</button>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Send this tab away after</div>
+                        <div class="d">When opening in about:blank, this tab goes to the panic page.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="cloakRedirect"
+                            aria-label="Redirect original tab"><span></span></label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>updates</h2>
+                <div class="row">
+                    <div>
+                        <div class="t">Always fresh</div>
+                        <div class="d">Skips the CDN's cache by loading the newest commit directly. Turn off if GitHub
+                            is blocked here.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="fresh"
+                            aria-label="Always fresh"><span></span></label>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Reload from source</div>
+                        <div class="d" id="ver">Drops what's loaded and fetches everything again.</div>
+                    </div>
+                    <button class="btn sm" id="refresh" type="button">refresh</button>
                 </div>
             </section>
 
@@ -116,7 +220,7 @@
             if (!S) { $("#missing").hidden = false; return; }
             $("#app").hidden = false;
 
-            let cur = S.read(), tt;
+            let cur = S.read(), tt, capturing = false;
             const toast = m => {
                 const t = $("#toast");
                 t.textContent = m; t.classList.add("show");
@@ -136,6 +240,10 @@
                 document.querySelectorAll(".swatch").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === cur.accent));
                 document.querySelectorAll("#density button").forEach(b => b.classList.toggle("on", b.dataset.v === cur.density));
                 $("#motion").checked = cur.motion === "reduced";
+                document.querySelectorAll("#icon button").forEach(b => b.classList.toggle("on", b.dataset.v === cur.icon));
+                for (const id of ["panicOn", "panicBtn", "lockHidden", "cloakRedirect", "fresh"]) $("#" + id).checked = !!cur[id];
+                if (!capturing) $("#key").textContent = S.keyLabel(cur.panicKey);
+                if (document.activeElement !== $("#panicUrl")) $("#panicUrl").value = cur.panicUrl;
                 if (document.activeElement !== $("#title")) $("#title").value = cur.title;
             }
             function save(patch, quiet) {
@@ -150,6 +258,36 @@
             let td;
             $("#title").addEventListener("input", e => { clearTimeout(td); td = setTimeout(() => save({ title: e.target.value }), 250); });
             $("#lock").addEventListener("click", () => S.lock());
+
+            document.querySelectorAll("#titles button").forEach(b => b.addEventListener("click", () => { $("#title").value = b.dataset.t; save({ title: b.dataset.t }); }));
+            $("#icon").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ icon: b.dataset.v }); });
+            for (const id of ["panicOn", "panicBtn", "lockHidden", "cloakRedirect", "fresh"])
+                $("#" + id).addEventListener("change", e => save({ [id]: e.target.checked }));
+
+            // panic key: click, then press the key you want. Captured before the shell sees it.
+            const keyBtn = $("#key"), keyHint = $("#keyhint"), keyHintText = keyHint.textContent;
+            const stopCapture = () => { capturing = false; keyHint.textContent = keyHintText; sync(); };
+            keyBtn.addEventListener("click", () => { capturing = true; keyBtn.textContent = "press a key…"; keyHint.textContent = "click away to cancel."; });
+            keyBtn.addEventListener("blur", () => { if (capturing) stopCapture(); });
+            addEventListener("keydown", e => {
+                if (!capturing) return;
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (!S.keyOk(e.code)) { keyHint.textContent = "that's a key you type with. try ` , Esc, \\ or an F-key."; return; }
+                save({ panicKey: e.code }); toast("panic key set"); keyBtn.blur();
+            }, true);
+
+            let tu;
+            $("#panicUrl").addEventListener("input", () => { clearTimeout(tu); tu = setTimeout(() => save({ panicUrl: $("#panicUrl").value }, true), 300); });
+            $("#panicUrl").addEventListener("change", () => { save({ panicUrl: $("#panicUrl").value }); $("#panicUrl").value = cur.panicUrl; });
+            $("#panicNow").addEventListener("click", () => S.panic());
+
+            $("#cloak").addEventListener("click", () => { if (!S.cloak()) toast("pop-up blocked — allow pop-ups"); });
+            $("#refresh").addEventListener("click", async e => {
+                const b = e.currentTarget; b.disabled = true;
+                // the shell reloads this page afterwards, so the toast is for the failure case only
+                try { await S.refresh(); } catch { toast("couldn't refresh"); b.disabled = false; }
+            });
+            { const i = S.info(); if (i.sha) $("#ver").textContent = "Loaded commit " + i.ref.slice(0, 7) + ". Fetches everything again."; }
             $("#reset").addEventListener("click", () => { cur = { ...S.defaults }; S.write(cur); S.apply(); sync(); toast("defaults restored"); });
 
             sync();

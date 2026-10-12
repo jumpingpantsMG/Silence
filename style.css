@@ -1657,3 +1657,13 @@ body.tp-done .tp-res {
         grid-template-columns: 1fr
     }
 }
+
+/* settings: preset chips + key button */
+.field>.seg {
+    justify-self: start;
+    margin-top: 4px
+}
+
+#key {
+    min-width: 72px
+}

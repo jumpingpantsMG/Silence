@@ -7,6 +7,7 @@
     <title>tempo · typing test</title>
     <meta name="description" content="a minimal typing test">
     <meta name="theme-color" content="#08080a">
+    <link rel="icon" id="icon" href="data:,">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <style>
         /* The shell keeps this small block inline on purpose: it has to paint the
@@ -273,6 +274,35 @@
             }
         }
 
+        /* optional panic button: small, dim, bottom-left, only while unlocked */
+        #panic {
+            display: none;
+            position: fixed;
+            z-index: 30;
+            left: 10px;
+            bottom: 10px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .05);
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1;
+            opacity: .35;
+            transition: opacity .2s;
+        }
+
+        #panic:hover,
+        #panic:focus-visible {
+            opacity: 1;
+            color: var(--fg)
+        }
+
+        body.panicbtn:not(.locked) #panic {
+            display: block
+        }
+
         @media (prefers-reduced-motion:reduce) {
 
             *,
@@ -306,6 +336,7 @@
     <script>try { if (sessionStorage.getItem("silence:unlocked") !== "1") document.body.classList.add("locked") } catch (e) { document.body.classList.add("locked") }</script>
 
     <div class="bar" aria-hidden="true"></div>
+    <button id="panic" type="button" aria-label="close" title="close">×</button>
 
     <div class="loader" role="status" aria-live="polite">
         <div class="mark">silence<small>loading</small></div>
@@ -333,7 +364,7 @@
             //   https://cdn.jsdelivr.net/gh/<repo>@<ref>/<dir><page>.html
             // If that fails (or the URL has ?local) they come from this site's own /pages folder.
             const CONFIG = {
-                repo: "jumpingpantsmg/Silence",
+                repo: "jumpingpantsmg/Silence",  // GitHub repo to fetch from
                 ref: "main",          // branch, tag or commit SHA (a SHA skips CDN cache lag)
                 dir: "Pages/",
                 home: "index",
@@ -362,7 +393,38 @@
                 lime: ["#b6e86b", "#5ce1c6"],
             };
             const DENSITY = { compact: "165px", comfortable: "210px", large: "280px" };
-            const DEFAULTS = { accent: "violet", density: "comfortable", motion: "full", title: "" };
+            const PANIC_URL = "https://www.google.com";
+            const DEFAULTS = {
+                accent: "violet", density: "comfortable", motion: "full", title: "tempo · typing test", icon: "none",
+                panicOn: true, panicKey: "Backquote", panicUrl: PANIC_URL, panicBtn: false, cloakRedirect: true,
+                lockHidden: false, fresh: true,
+            };
+
+            // generic tab icons (original glyphs)
+            const svg = b => "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">${b}</svg>`);
+            const ICONS = {
+                none: "data:,",
+                document: svg('<path d="M8 3h11l6 6v20H8z" fill="#e8eaed"/><path d="M19 3l6 6h-6z" fill="#9aa0a6"/><path d="M11 15h10M11 19h10M11 23h7" stroke="#80868b" stroke-width="1.6"/>'),
+                folder: svg('<path d="M3 8h9l3 3h14v16H3z" fill="#f2b84b"/>'),
+                calendar: svg('<rect x="4" y="6" width="24" height="22" rx="3" fill="#fff" stroke="#9aa0a6" stroke-width="1.6"/><path d="M4 12h24" stroke="#9aa0a6" stroke-width="1.6"/><path d="M10 3v5M22 3v5" stroke="#9aa0a6" stroke-width="2"/>'),
+                dot: svg('<circle cx="16" cy="16" r="9" fill="#9aa0a6"/>'),
+            };
+
+            // keys you type while using the site can't be the panic key
+            const BAD_KEY = /^(Key|Digit|Numpad|Space$|Enter$|Tab$|Backspace$)/;
+            const KEYNAMES = {
+                Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\",
+                Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Escape: "esc"
+            };
+            const keyLabel = c => KEYNAMES[c] || String(c).replace(/^(Key|Digit)/, "").toLowerCase();
+            const keyOk = c => typeof c === "string" && /^[A-Za-z0-9]{1,20}$/.test(c) && !BAD_KEY.test(c);
+
+            const cleanUrl = u => {
+                u = String(u || "").trim().slice(0, 300);
+                if (u && !/^[a-z][a-z0-9+.-]*:/i.test(u)) u = "https://" + u;
+                return /^https?:\/\/[^\s/]+\.[^\s/]+/i.test(u) ? u : PANIC_URL;
+            };
+            const bool = (v, d) => (typeof v === "boolean" ? v : d);
 
             const sanitize = s => {
                 s = s && typeof s === "object" ? s : {};
@@ -370,14 +432,23 @@
                     accent: Object.hasOwn(PRESETS, s.accent) ? s.accent : DEFAULTS.accent,
                     density: Object.hasOwn(DENSITY, s.density) ? s.density : DEFAULTS.density,
                     motion: s.motion === "reduced" ? "reduced" : "full",
-                    title: typeof s.title === "string" ? s.title.slice(0, 60) : "",
+                    title: typeof s.title === "string" ? s.title.slice(0, 60) : DEFAULTS.title,   // missing = default; blank = use page name
+                    icon: Object.hasOwn(ICONS, s.icon) ? s.icon : "none",
+                    panicOn: bool(s.panicOn, DEFAULTS.panicOn),
+                    panicKey: keyOk(s.panicKey) ? s.panicKey : DEFAULTS.panicKey,
+                    panicUrl: cleanUrl(s.panicUrl),
+                    panicBtn: bool(s.panicBtn, DEFAULTS.panicBtn),
+                    cloakRedirect: bool(s.cloakRedirect, DEFAULTS.cloakRedirect),
+                    lockHidden: bool(s.lockHidden, DEFAULTS.lockHidden),
+                    fresh: bool(s.fresh, DEFAULTS.fresh),
                 };
             };
             const read = () => {
                 try { return sanitize(JSON.parse(localStorage.getItem(KEY) || "{}")); }
-                catch { return { ...DEFAULTS }; }
+                catch { return sanitize({}); }
             };
-            const write = s => { try { localStorage.setItem(KEY, JSON.stringify(sanitize(s))); } catch { } };
+            let cfg = read();                       // live copy the key handlers use
+            const write = s => { cfg = sanitize(s); try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch { } };
 
             const roots = () => {
                 const r = [document.documentElement];
@@ -385,7 +456,7 @@
                 return r;
             };
             function apply() {
-                const s = read(), [a, b] = PRESETS[s.accent];
+                const s = cfg = read(), [a, b] = PRESETS[s.accent];
                 for (const root of roots()) {
                     root.style.setProperty("--accent", a);
                     root.style.setProperty("--accent2", b);
@@ -393,8 +464,13 @@
                     root.dataset.motion = s.motion;
                 }
                 document.title = s.title.trim() || pageTitle;
+                $("#icon").href = ICONS[s.icon];
+                document.body.classList.toggle("panicbtn", s.panicBtn);
             }
-            window.silence = { read, write, apply, presets: PRESETS, defaults: DEFAULTS, lock, unlock };
+            window.silence = {
+                read, write, apply, presets: PRESETS, defaults: DEFAULTS, icons: Object.keys(ICONS),
+                keyLabel, keyOk, lock, unlock, panic, cloak, refresh, info: () => ({ ref: lastRef, sha: /^[0-9a-f]{40}$/i.test(lastRef) }),
+            };
             apply();
 
             /* ───────── lock ─────────
@@ -419,27 +495,93 @@
                 history.replaceState(null, "", location.pathname + location.search);   // drop #/route from the URL
                 load(CONFIG.home);
             }
-            const hotkey = e => {                                     // Alt + Shift + L
-                if (e.altKey && e.shiftKey && e.code === "KeyL" && isUnlocked()) { e.preventDefault(); lock(); }
+            // Panic: drop the unlocked state, blank the frame and send the whole tab somewhere boring.
+            // In a cloaked (about:blank) window "top" is that window, so it gets sent too.
+            function panic() {
+                memUnlocked = false;
+                try { sessionStorage.removeItem(GATE); } catch { }
+                document.body.classList.add("locked");
+                token++;
+                frame.removeAttribute("srcdoc");
+                frame.src = "about:blank";
+                const url = cfg.panicUrl;
+                try { window.top.location.replace(url); } catch { location.replace(url); }
+            }
+
+            // Open the site inside an about:blank window so the address bar shows nothing.
+            // Needs a click (popup rules). Optionally sends this tab to the panic URL.
+            function cloak() {
+                const w = window.open("about:blank", "_blank");
+                if (!w) return false;
+                try { w.sessionStorage.removeItem(GATE); } catch { }      // popups inherit sessionStorage: start the cloak locked
+                const d = w.document;
+                d.title = document.title;
+                const ic = d.createElement("link"); ic.rel = "icon"; ic.href = $("#icon").href; d.head.append(ic);
+                const st = d.createElement("style");
+                st.textContent = "html,body{margin:0;height:100%;background:#08080a}iframe{border:0;width:100%;height:100%;display:block}";
+                d.head.append(st);
+                const f = d.createElement("iframe");
+                f.src = location.href.split("#")[0];
+                f.setAttribute("allow", "fullscreen; gamepad; autoplay; clipboard-write");
+                f.setAttribute("allowfullscreen", "");
+                d.body.append(f);
+                if (cfg.cloakRedirect && window.top === window) location.replace(cfg.panicUrl);
+                return true;
+            }
+
+            const hotkey = e => {
+                if (e.altKey && e.shiftKey && e.code === "KeyL" && isUnlocked()) { e.preventDefault(); lock(); return; }   // Alt + Shift + L
+                if (cfg.panicOn && e.code === cfg.panicKey && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); panic(); }
             };
             addEventListener("keydown", hotkey);
+            $("#panic").addEventListener("click", panic);
+            document.addEventListener("visibilitychange", () => { if (document.hidden && cfg.lockHidden && isUnlocked()) lock(); });
 
             /* ───────── fetching ───────── */
             const pageFromHash = () => {
                 const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
                 return /^[\w-]+$/.test(h) ? h : CONFIG.home;
             };
-            const sources = name => {
-                const cdn = { url: `${CDN}${CONFIG.dir}${name}.html`, base: CDN };
+            /* jsDelivr caches a branch (@main) for hours. With "fresh" on we ask GitHub which commit
+               the branch is on right now and load from that exact SHA instead, which jsDelivr
+               serves immediately and never caches stale. If GitHub can't be reached we fall back to
+               the branch name. */
+            let lastRef = CONFIG.ref, refP = null, failUrl = "";
+            const isSha = r => /^[0-9a-f]{40}$/i.test(r);
+            function resolveRef(force) {
+                if (!cfg.fresh || isSha(CONFIG.ref) || /^YOUR_USER\//.test(CONFIG.repo)) return Promise.resolve(lastRef = CONFIG.ref);
+                if (refP && !force) return refP;
+                return refP = (async () => {
+                    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 3500);
+                    try {
+                        const r = await fetch(`https://api.github.com/repos/${CONFIG.repo}/commits/${encodeURIComponent(CONFIG.ref)}`,
+                            { headers: { Accept: "application/vnd.github.sha" }, signal: ctl.signal, cache: "no-store" });
+                        if (!r.ok) throw new Error(r.status);
+                        const sha = (await r.text()).trim();
+                        return (lastRef = isSha(sha) ? sha : CONFIG.ref);
+                    } catch { return (lastRef = CONFIG.ref); }
+                    finally { clearTimeout(t); }
+                })();
+            }
+            const sources = async name => {
+                const base = `https://cdn.jsdelivr.net/gh/${CONFIG.repo}@${await resolveRef()}/`;
+                const cdn = { url: `${base}${CONFIG.dir}${name}.html`, base };
                 const local = { url: `${LOCAL}${CONFIG.dir}${name}.html`, base: LOCAL };
                 return LOCAL_FIRST ? [local, cdn] : [cdn, local];
             };
+
+            async function refresh() {            // forget everything and pull the newest commit
+                cache.clear();
+                const ref = await resolveRef(true);
+                await load(pageFromHash());
+                return ref;
+            }
 
             async function timedFetch(url) {
                 const ctl = new AbortController();
                 const t = setTimeout(() => ctl.abort(), CONFIG.timeout);
                 try {
-                    const res = await fetch(url, { signal: ctl.signal, cache: "default" });
+                    const res = await fetch(url, { signal: ctl.signal, cache: cfg.fresh ? "no-cache" : "default" });
                     if (!res.ok) throw new Error(res.status);
                     return await res.text();
                 } finally { clearTimeout(t); }
@@ -458,7 +600,9 @@
             async function getPage(name) {
                 if (cache.has(name)) return cache.get(name);
                 let lastErr;
-                for (const src of sources(name)) {
+                const list = await sources(name);
+                failUrl = list[0].url;
+                for (const src of list) {
                     try {
                         const html = rewrite(await timedFetch(src.url), src.base);
                         cache.set(name, html);
@@ -485,7 +629,7 @@
                     frame.srcdoc = html;
                 } catch {
                     if (my !== token) return;
-                    $("#fail-url").textContent = sources(name)[0].url;
+                    $("#fail-url").textContent = failUrl;
                     setState("failed");
                 }
             }
@@ -522,7 +666,7 @@
             });
 
             addEventListener("hashchange", () => load(pageFromHash()));
-            $("#retry").addEventListener("click", () => { cache.clear(); load(pageFromHash()); });
+            $("#retry").addEventListener("click", () => refresh());
 
             load(pageFromHash());
         })();

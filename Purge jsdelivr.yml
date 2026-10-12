@@ -1,0 +1,16 @@
+# After every push, ask jsDelivr to drop its cached copy of this repo's files,
+# so branch URLs (@main) update right away. Needs no secrets.
+name: purge jsDelivr
+on:
+  push:
+    branches: [main]
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: purge
+        run: |
+          curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@${{ github.ref_name }}/index.html" || true
+          for f in style.css Pages/index.html Pages/disguise.html Pages/forms.html Pages/soundboard.html Pages/settings.html Pages/admin.html; do
+            curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@${{ github.ref_name }}/$f" || true
+          done
