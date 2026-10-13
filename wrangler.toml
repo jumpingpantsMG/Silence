@@ -14,7 +14,7 @@ run_worker_first = ["/api/*"]
 # then paste the printed id below.
 [[kv_namespaces]]
 binding = "FORMS"
-id = "256ed83678d6493f9471fb589c87b31f"
+id = "52114f3c8295410daec676a1c37e7a00"
 
 [observability]
 enabled = true
