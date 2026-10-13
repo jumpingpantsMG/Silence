@@ -40,6 +40,21 @@
             <h1>submissions</h1>
         </section>
 
+        <div class="analytic-stats" id="analytics-stats">
+            <div class="analytic" id="analytic-active">
+                <h2>Active Users</h2>
+                <p class="analytics-value" id="analytic-active-value">0</p>
+            </div>
+            <div class="analytic" id="analytic-page">
+                <h2>Page Views</h2>
+                <p class="analytics-value" id="analytic-page-value">0</p>
+            </div>
+            <div class="analytic" id="analytic-total">
+                <h2>Total Views</h2>
+                <p class="analytics-value" id="analytic-total-value">0</p>
+            </div>
+        </div>
+
         <div class="stats" id="stats"></div>
 
         <div class="toolbar">
@@ -226,6 +241,22 @@
 
             /* ───────── boot ───────── */
             if (token) load().catch(() => show(false)); else show(false);
+
+            fetch('https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnSfS8JWuU3JDVIfOeGCi-xy04711iXSSgyNVBoEqYSfLJIjOtmoiGIhiKCMB1wnW0QlyNHG790W6QoYbY9A-Onu7FZyIdHiQTUzvwGCfHPvCpRKT3NKvkBUzPJIFPBtY5Y1x_xzM-K7AymULNJRRIbPA_dGasdHTNkOy4ovxIwHkQmge3fRpUC1QNTrwDMCFFTtm_F2YLYMdU3WsFdyIUev8-PzCwGViqAfIMPxpmscC0vN9_AYaSGOnk2Zkz5yo5Cwf57pRRRmQcZkgfvFF3k4BZh2Dg&lib=M3pUzAH5H68IVipI-7n2WCbrSPkNLkyEG')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    }
+                    const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerText = v ?? 0; };
+                    set('analytic-active-value', data.activeUsers);
+                    set('analytic-total-value', data.totalViews);
+                    set('analytic-page-value', data.totalUsers);
+                })
+                .catch(err => {
+                    console.error('Error fetching stats:', err);
+                });
         })();
     </script>
 </body>

@@ -1052,6 +1052,39 @@ input[type=range]::-moz-range-thumb {
     margin-bottom: 22px
 }
 
+/* ── analytics stat cards ─────────────────────────────────── */
+
+.analytic-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.analytic {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+}
+
+.analytic h2 {
+    margin: 0 0 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.analytics-value {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 600;
+    font-family: var(--mono);
+    color: var(--text);
+}
+
 .stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
