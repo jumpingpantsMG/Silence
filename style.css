@@ -117,13 +117,20 @@ nav {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    height: 64px
+    height: 82px
 }
 
 .logo {
-    font-weight: 300;
-    font-size: 1.25rem;
-    letter-spacing: -.03em
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.logo img {
+    display: block;
+    width: 72px;
+    height: 72px;
+    object-fit: contain;
 }
 
 .links {

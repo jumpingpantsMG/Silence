@@ -373,7 +373,7 @@
             //   https://cdn.jsdelivr.net/gh/<repo>@<ref>/<dir><page>.html
             // If that fails (or the URL has ?local) they come from this site's own /pages folder.
             const CONFIG = {
-                repo: "jumpingpantsmg/Silence",  // GitHub repo to fetch from
+                repo: "jumpingpantsmg/Silencedd",  // GitHub repo to fetch from
                 ref: "main",          // branch, tag or commit SHA (a SHA skips CDN cache lag)
                 dir: "Pages/",
                 home: "index",
@@ -412,7 +412,7 @@
             // generic tab icons (original glyphs)
             const svg = b => "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">${b}</svg>`);
             const ICONS = {
-                none: "data:,",
+                none: "../Silence-logo.png",
                 document: svg('<path d="M8 3h11l6 6v20H8z" fill="#e8eaed"/><path d="M19 3l6 6h-6z" fill="#9aa0a6"/><path d="M11 15h10M11 19h10M11 23h7" stroke="#80868b" stroke-width="1.6"/>'),
                 folder: svg('<path d="M3 8h9l3 3h14v16H3z" fill="#f2b84b"/>'),
                 calendar: svg('<rect x="4" y="6" width="24" height="22" rx="3" fill="#fff" stroke="#9aa0a6" stroke-width="1.6"/><path d="M4 12h24" stroke="#9aa0a6" stroke-width="1.6"/><path d="M10 3v5M22 3v5" stroke="#9aa0a6" stroke-width="2"/>'),

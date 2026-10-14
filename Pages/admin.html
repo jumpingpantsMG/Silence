@@ -7,6 +7,7 @@
     <meta name="robots" content="noindex,nofollow">
     <title>Silence · admin</title>
     <meta name="theme-color" content="#08080a">
+    <link rel="icon" href="../Silence-logo.png" type="image/png">
     <link rel="stylesheet" href="../style.css">
 </head>
 
@@ -14,7 +15,9 @@
     <header>
         <div class="wrap">
             <nav>
-                <a class="logo" href="../index.html">silence</a>
+                <a class="logo" href="../index.html">
+                    <img src="../Silence-logo.png" alt="Silence" />
+                </a>
                 <div class="links"><a class="on" href="admin.html">admin</a></div>
             </nav>
         </div>
@@ -46,8 +49,8 @@
                 <p class="analytics-value" id="analytic-active-value">0</p>
             </div>
             <div class="analytic" id="analytic-page">
-                <h2>Page Views</h2>
-                <p class="analytics-value" id="analytic-page-value">0</p>
+                <h2>Total Users</h2>
+                <p class="analytics-value" id="analytic-users-value">0</p>
             </div>
             <div class="analytic" id="analytic-total">
                 <h2>Total Views</h2>
@@ -242,7 +245,7 @@
             /* ───────── boot ───────── */
             if (token) load().catch(() => show(false)); else show(false);
 
-            fetch('https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnSfS8JWuU3JDVIfOeGCi-xy04711iXSSgyNVBoEqYSfLJIjOtmoiGIhiKCMB1wnW0QlyNHG790W6QoYbY9A-Onu7FZyIdHiQTUzvwGCfHPvCpRKT3NKvkBUzPJIFPBtY5Y1x_xzM-K7AymULNJRRIbPA_dGasdHTNkOy4ovxIwHkQmge3fRpUC1QNTrwDMCFFTtm_F2YLYMdU3WsFdyIUev8-PzCwGViqAfIMPxpmscC0vN9_AYaSGOnk2Zkz5yo5Cwf57pRRRmQcZkgfvFF3k4BZh2Dg&lib=M3pUzAH5H68IVipI-7n2WCbrSPkNLkyEG')
+            fetch('https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnRmBVLYxh86HYqWboBkMmw6Qdt-qdUyJimUXMKK-QtN4VNxju4yIP6gdm9GkAferMBlzkkPYQJwx5yzv34xV3658R8WnwRZUTU_T5N8LSiiRXD3g_9CV5lHFuLKz5upoFPscWcMFcUIGv8aA1htAAwSXiCQA6LElvrPHU36tOw8CJAe1gKJUFM7zXrJOMGP-gvffTqKQ6Y4G_I5gze10XLaqji6lYsaXK49U5FP-P3devydyUF9Ua_5Jvmu4d5SKdTQGbGJ8UQMgfAP28IMkUa9OkCI8w&lib=M3pUzAH5H68IVipI-7n2WCbrSPkNLkyEG')
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
@@ -250,9 +253,9 @@
                         return;
                     }
                     const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerText = v ?? 0; };
-                    set('analytic-active-value', data.activeUsers);
-                    set('analytic-total-value', data.totalViews);
-                    set('analytic-page-value', data.totalUsers);
+                    set('analytic-active-value', data.realtimeActiveUsers);
+                    set('analytic-total-value', data.allTimeViews);
+                    set('analytic-users-value', data.allTimeUsers);
                 })
                 .catch(err => {
                     console.error('Error fetching stats:', err);
