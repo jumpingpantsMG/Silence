@@ -88,6 +88,18 @@
                         <button type="button" data-v="dot">dot</button>
                     </div>
                 </div>
+                <div class="field">
+                    <label for="iconUrl">Custom icon</label>
+                    <input id="iconUrl" type="text" maxlength="500" placeholder="https://example.com/icon.png"
+                        autocomplete="off" spellcheck="false">
+                    <div class="hint"><span id="iconHint">paste an image url, or upload one.</span></div>
+                    <div class="actions" style="margin-top:6px">
+                        <button class="btn sm" id="iconUse" type="button">use url</button>
+                        <label class="btn sm" style="cursor:pointer">upload image<input type="file" id="iconFile"
+                                accept="image/*" hidden></label>
+                        <button class="btn sm" id="iconClear" type="button" hidden>remove</button>
+                    </div>
+                </div>
             </section>
 
             <section class="panel">
@@ -236,6 +248,8 @@
                 if (!capturing) $("#key").textContent = S.keyLabel(cur.panicKey);
                 if (document.activeElement !== $("#panicUrl")) $("#panicUrl").value = cur.panicUrl;
                 if (document.activeElement !== $("#title")) $("#title").value = cur.title;
+                $("#iconClear").hidden = !(cur.icon === "custom" && cur.customIcon);
+                if (document.activeElement !== $("#iconUrl")) $("#iconUrl").value = /^https?:/i.test(cur.customIcon || "") ? cur.customIcon : "";
             }
             function save(patch, quiet) {
                 cur = { ...cur, ...patch };
@@ -252,6 +266,21 @@
 
             document.querySelectorAll("#titles button").forEach(b => b.addEventListener("click", () => { $("#title").value = b.dataset.t; save({ title: b.dataset.t }); }));
             $("#icon").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ icon: b.dataset.v }); });
+            // custom tab icon: url or upload
+            const iconHint = $("#iconHint"), iconHintText = iconHint.textContent;
+            const iconErr = m => { iconHint.textContent = m || iconHintText; iconHint.style.color = m ? "var(--danger)" : ""; };
+
+            $("#iconUse").addEventListener("click", async () => {
+                try { iconErr(); save({ icon: "custom", customIcon: await S.iconFromUrl($("#iconUrl").value) }); }
+                catch (e) { iconErr(e.message); }
+            });
+            $("#iconFile").addEventListener("change", async e => {
+                const f = e.target.files[0]; if (!f) return;
+                try { iconErr(); save({ icon: "custom", customIcon: await S.iconFromFile(f) }); }
+                catch (x) { iconErr(x.message); }
+                e.target.value = "";                      // lets you pick the same file again
+            });
+            $("#iconClear").addEventListener("click", () => { iconErr(); save({ icon: S.defaults.icon, customIcon: "" }); });
             for (const id of ["panicOn", "panicBtn", "lockHidden", "cloakRedirect", "fresh"])
                 $("#" + id).addEventListener("change", e => save({ [id]: e.target.checked }));
 

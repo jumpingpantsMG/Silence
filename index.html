@@ -65,8 +65,13 @@
             cursor: pointer
         }
 
-        /* frame */
-        #frame {
+        /* stage: one iframe per page, all kept alive, only one visible */
+        #stage {
+            position: absolute;
+            inset: 0
+        }
+
+        .page-frame {
             position: absolute;
             inset: 0;
             width: 100%;
@@ -74,15 +79,17 @@
             border: 0;
             background: var(--bg);
             opacity: 0;
-            transform: translateY(8px) scale(.995);
-            filter: blur(6px);
-            transition: opacity .55s var(--ease), transform .55s var(--ease), filter .55s var(--ease);
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity .25s var(--ease), visibility 0s .25s;
         }
 
-        body.ready #frame {
+        .page-frame.on {
+            z-index: 1;
             opacity: 1;
-            transform: none;
-            filter: none
+            visibility: visible;
+            pointer-events: auto;
+            transition: opacity .25s var(--ease);
         }
 
         /* loader */
@@ -169,7 +176,8 @@
             transition: opacity .3s
         }
 
-        body.loading .bar {
+        body.loading .bar,
+        body.busy .bar {
             opacity: 1
         }
 
@@ -320,11 +328,6 @@
                 animation: none !important;
                 transition: none !important
             }
-
-            #frame {
-                filter: none;
-                transform: none
-            }
         }
 
         :root[data-motion=reduced] *,
@@ -332,11 +335,6 @@
         :root[data-motion=reduced] *::after {
             animation: none !important;
             transition: none !important
-        }
-
-        :root[data-motion=reduced] #frame {
-            filter: none;
-            transform: none
         }
     </style>
 </head>
@@ -361,10 +359,7 @@
         </div>
     </div>
 
-    <iframe id="frame" title="content"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock allow-modals allow-downloads allow-orientation-lock"
-        allow="fullscreen; gamepad; autoplay; clipboard-write; accelerometer; gyroscope" allowfullscreen
-        referrerpolicy="no-referrer"></iframe>
+    <div id="stage"></div>
 
     <script>
         (() => {
@@ -378,21 +373,29 @@
                 dir: "Pages/",
                 home: "index",
                 timeout: 8000,
+                // pages loaded quietly in the background after the first one, so even
+                // the first visit to them is instant. Set to [] to turn this off.
+                preload: ["index", "soundboard", "forms", "settings"],
             };
             const CDN = `https://cdn.jsdelivr.net/gh/${CONFIG.repo}@${CONFIG.ref}/`;
             const LOCAL = new URL("./", location.href).href;
             const LOCAL_FIRST = /[?&]local\b/.test(location.search) || location.hostname.includes("localhost")
 
             const $ = s => document.querySelector(s);
-            const frame = $("#frame");
-            const cache = new Map();
-            let token = 0, pageTitle = "silence";
-            window.currentpage = CONFIG.home;  // for the shell to know which page is in the frame
+            const stage = $("#stage");
+            const cache = new Map();      // page name -> html text
+            const pages = new Map();      // page name -> { el, ready }. iframes live for the whole session
+            const titles = new Map();     // page name -> document title
+            let token = 0, gen = 0, current = null, pageTitle = "silence";
+            window.currentpage = CONFIG.home;  // for the shell to know which page is showing
+
+            const SANDBOX = "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock allow-modals allow-downloads allow-orientation-lock";
+            const ALLOW = "fullscreen; gamepad; autoplay; clipboard-write; accelerometer; gyroscope";
 
             /* ───────── settings ─────────
                The settings page talks to this through  window.parent.silence.
                Stored in localStorage on this origin; applied to the shell and to
-               whichever page is currently in the frame. */
+               every page iframe (hidden ones too). */
             const KEY = "silence:settings";
             const PRESETS = {                       // name: [accent, accent2]
                 violet: ["#8b7cff", "#5ce1c6"],
@@ -405,7 +408,7 @@
             const DENSITY = { compact: "165px", comfortable: "210px", large: "280px" };
             const PANIC_URL = "https://www.google.com";
             const DEFAULTS = {
-                accent: "violet", density: "comfortable", motion: "full", title: "tempo · typing test", icon: "none",
+                accent: "violet", density: "comfortable", motion: "full", title: "tempo · typing test", icon: "tempotype", customIcon: "",
                 panicOn: true, panicKey: "Backquote", panicUrl: PANIC_URL, panicBtn: false, cloakRedirect: true,
                 lockHidden: false, fresh: true,
             };
@@ -437,6 +440,12 @@
             };
             const bool = (v, d) => (typeof v === "boolean" ? v : d);
 
+            // custom tab icon: a small image data URL (from an upload) or an http(s) image URL
+            const okIcon = u => typeof u === "string" && (
+                (u.length <= 120000 && /^data:image\/(png|jpeg|gif|webp|x-icon|vnd\.microsoft\.icon|svg\+xml)[;,]/i.test(u)) ||
+                (u.length <= 500 && /^https?:\/\/[^\s/]+\.[^\s/]+/i.test(u))
+            );
+            const iconHref = s => (s.icon === "custom" && s.customIcon) ? s.customIcon : (ICONS[s.icon] || ICONS.tempotype);
             const sanitize = s => {
                 s = s && typeof s === "object" ? s : {};
                 return {
@@ -444,7 +453,8 @@
                     density: Object.hasOwn(DENSITY, s.density) ? s.density : DEFAULTS.density,
                     motion: s.motion === "reduced" ? "reduced" : "full",
                     title: typeof s.title === "string" ? s.title.slice(0, 60) : DEFAULTS.title,   // missing = default; blank = use page name
-                    icon: Object.hasOwn(ICONS, s.icon) ? s.icon : "none",
+                    icon: (Object.hasOwn(ICONS, s.icon) || s.icon === "custom") ? s.icon : DEFAULTS.icon,
+                    customIcon: okIcon(s.customIcon) ? s.customIcon : "",
                     panicOn: bool(s.panicOn, DEFAULTS.panicOn),
                     panicKey: keyOk(s.panicKey) ? s.panicKey : DEFAULTS.panicKey,
                     panicUrl: cleanUrl(s.panicUrl),
@@ -463,7 +473,9 @@
 
             const roots = () => {
                 const r = [document.documentElement];
-                try { const d = frame.contentDocument; if (d && d.documentElement) r.push(d.documentElement); } catch { }
+                for (const f of stage.querySelectorAll("iframe")) {
+                    try { const d = f.contentDocument; if (d && d.documentElement) r.push(d.documentElement); } catch { }
+                }
                 return r;
             };
             function apply() {
@@ -476,12 +488,56 @@
                 }
                 const disguised = document.body.classList.contains("locked");
                 document.title = disguised ? DEFAULTS.title : (s.title.trim() || pageTitle);
-                $("#icon").href = disguised ? ICONS.tempotype : ICONS[s.icon];
+                $("#icon").href = disguised ? ICONS.tempotype : iconHref(s);
                 document.body.classList.toggle("panicbtn", s.panicBtn);
+            }
+            // upload: shrink to a 64x64 PNG so it stays small in localStorage
+            function iconFromFile(file) {
+                return new Promise((resolve, reject) => {
+                    if (!file || !/^image\//.test(file.type)) return reject(new Error("that's not an image"));
+                    const raw = () => {                      // fallback: store the file as-is if it's small
+                        if (file.size > 90000) return reject(new Error("image too large"));
+                        const r = new FileReader();
+                        r.onload = () => okIcon(r.result) ? resolve(r.result) : reject(new Error("unsupported image type"));
+                        r.onerror = () => reject(new Error("couldn't read the file"));
+                        r.readAsDataURL(file);
+                    };
+                    const url = URL.createObjectURL(file), img = new Image();
+                    img.onload = () => {
+                        try {
+                            if (!img.width || !img.height) throw 0;
+                            const c = document.createElement("canvas"); c.width = c.height = 64;
+                            const k = Math.min(64 / img.width, 64 / img.height), w = img.width * k, h = img.height * k;
+                            c.getContext("2d").drawImage(img, (64 - w) / 2, (64 - h) / 2, w, h);
+                            resolve(c.toDataURL("image/png"));
+                        } catch { raw(); }
+                        finally { URL.revokeObjectURL(url); }
+                    };
+                    img.onerror = () => { URL.revokeObjectURL(url); raw(); };
+                    img.src = url;
+                });
+            }
+
+            // url: checks it actually loads as an image, then stores the url itself
+            function iconFromUrl(u) {
+                u = String(u || "").trim();
+                if (u && !/^[a-z][a-z0-9+.-]*:/i.test(u)) u = "https://" + u;
+                return new Promise((resolve, reject) => {
+                    if (!okIcon(u)) return reject(new Error("not a valid image url"));
+                    const img = new Image();
+                    img.onload = () => resolve(u);
+                    img.onerror = () => reject(new Error("couldn't load that image"));
+                    img.src = u;
+                });
+            }
+
+            function setCustomIcon(v) {                     // "" resets to the default (tempotype)
+                write({ ...read(), icon: v ? "custom" : DEFAULTS.icon, customIcon: v || "" });
+                apply();
             }
             window.silence = {
                 read, write, apply, presets: PRESETS, defaults: DEFAULTS, icons: Object.keys(ICONS),
-                keyLabel, keyOk, lock, unlock, panic, cloak, refresh, info: () => ({ ref: lastRef, sha: /^[0-9a-f]{40}$/i.test(lastRef) }),
+                keyLabel, keyOk, lock, unlock, panic, cloak, refresh, iconFromFile, iconFromUrl, setCustomIcon, info: () => ({ ref: lastRef, sha: /^[0-9a-f]{40}$/i.test(lastRef) }),
             };
             apply();
 
@@ -498,24 +554,23 @@
                 memUnlocked = true;
                 try { sessionStorage.setItem(GATE, "1"); } catch { }
                 document.body.classList.remove("locked");
-                load(pageFromHash());
+                show(pageFromHash());
             }
             function lock() {
                 memUnlocked = false;
                 try { sessionStorage.removeItem(GATE); } catch { }
                 document.body.classList.add("locked");
                 history.replaceState(null, "", location.pathname + location.search);   // drop #/route from the URL
-                load(CONFIG.home);
+                purge();
+                show(CONFIG.home);
             }
-            // Panic: drop the unlocked state, blank the frame and send the whole tab somewhere boring.
+            // Panic: drop the unlocked state, throw away every page and send the whole tab somewhere boring.
             // In a cloaked (about:blank) window "top" is that window, so it gets sent too.
             function panic() {
                 memUnlocked = false;
                 try { sessionStorage.removeItem(GATE); } catch { }
                 document.body.classList.add("locked");
-                token++;
-                frame.removeAttribute("srcdoc");
-                frame.src = "about:blank";
+                purge();
                 const url = cfg.panicUrl;
                 try { window.top.location.replace(url); } catch { location.replace(url); }
             }
@@ -585,7 +640,8 @@
             async function refresh() {            // forget everything and pull the newest commit
                 cache.clear();
                 const ref = await resolveRef(true);
-                await load(pageFromHash());
+                purge();
+                await show(pageFromHash());
                 return ref;
             }
 
@@ -629,32 +685,17 @@
                 document.body.classList.add(s);
             };
 
-            /* ───────── load ───────── */
-            async function load(want) {
-                const name = isUnlocked() ? want : "disguise";   // locked: every route is the typing test
-                window.currentpage = name;
-                const my = ++token;
-                setState("loading");
-                frame.removeAttribute("srcdoc");
-                try {
-                    const html = await getPage(name);
-                    if (my !== token) return;
-                    frame.srcdoc = html;
-                } catch {
-                    if (my !== token) return;
-                    $("#fail-url").textContent = failUrl;
-                    setState("failed");
-                }
+            /* ───────── pages ─────────
+               Each page gets its own iframe the first time it's opened and keeps it.
+               Switching only shows one and hides the rest, so nothing reloads. */
+            function purge() {                      // throw every page away (lock, panic, refresh)
+                gen++; token++;
+                for (const { el } of pages.values()) el.remove();
+                pages.clear();
+                current = null;
             }
 
-            frame.addEventListener("load", () => {
-                if (!frame.hasAttribute("srcdoc")) return;
-                const doc = frame.contentDocument;
-                if (!doc) return;
-
-                pageTitle = doc.title || "silence";
-                apply();                                   // accent, card size, motion, tab title
-
+            function wire(doc) {
                 // keep navigation inside the shell
                 doc.addEventListener("click", e => {
                     const a = e.target.closest && e.target.closest("a[href]");
@@ -672,16 +713,90 @@
                     if ((location.hash || "") === next) return;
                     location.hash = next;
                 });
-
                 doc.addEventListener("keydown", hotkey);
-                try { frame.contentWindow.focus(); } catch { }          // typing goes straight to the page
-                requestAnimationFrame(() => setState("ready"));
-            });
+            }
 
-            addEventListener("hashchange", () => load(pageFromHash()));
-            $("#retry").addEventListener("click", () => refresh());
+            function ensure(name) {                 // resolves to the page's iframe, creating it if needed
+                const hit = pages.get(name);
+                if (hit) return hit.ready;
 
-            load(pageFromHash());
+                const el = document.createElement("iframe");
+                el.className = "page-frame";
+                el.title = "content";
+                el.dataset.page = name;             // the page's own navbar reads this
+                el.setAttribute("sandbox", SANDBOX);
+                el.setAttribute("allow", ALLOW);
+                el.setAttribute("allowfullscreen", "");
+                el.referrerPolicy = "no-referrer";
+
+                const g = gen;
+                const ready = (async () => {
+                    const html = await getPage(name);
+                    if (g !== gen) throw new Error("stale");        // purged while fetching
+                    await new Promise(done => {
+                        el.addEventListener("load", () => {
+                            const doc = el.contentDocument;
+                            if (doc) { titles.set(name, doc.title || "silence"); wire(doc); }
+                            apply();                                // accent, card size, motion
+                            done();
+                        }, { once: true });
+                        el.srcdoc = html;
+                        stage.append(el);
+                    });
+                    return el;
+                })();
+
+                const entry = { el, ready };
+                pages.set(name, entry);
+                ready.catch(() => { if (pages.get(name) === entry) pages.delete(name); el.remove(); });
+                return ready;
+            }
+
+            const idle = window.requestIdleCallback || (f => setTimeout(f, 800));
+            function preload() {
+                if (!isUnlocked()) return;
+                for (const n of CONFIG.preload || []) if (!pages.has(n)) ensure(n).catch(() => { });
+            }
+
+            function swap(name, el) {
+                for (const f of stage.children) f.classList.toggle("on", f === el);
+                if (name !== "disguise" && pages.has("disguise")) {   // just unlocked: drop the typing test
+                    pages.get("disguise").el.remove();
+                    pages.delete("disguise");
+                }
+                current = name;
+                window.currentpage = name;
+                pageTitle = titles.get(name) || "silence";
+                apply();
+                setState("ready");
+                try { el.contentWindow.focus(); } catch { }
+                if (name !== "disguise") idle(preload);
+            }
+
+            async function show(want) {
+                const name = isUnlocked() ? want : "disguise";   // locked: every route is the typing test
+                const my = ++token;
+                if (!pages.has(name)) {
+                    if (current) document.body.classList.add("busy");   // stay on the current page, thin bar only
+                    else setState("loading");                           // very first load: full loader
+                }
+                try {
+                    const el = await ensure(name);
+                    if (my !== token) return;
+                    swap(name, el);
+                } catch {
+                    if (my !== token) return;
+                    $("#fail-url").textContent = failUrl;
+                    setState("failed");
+                } finally {
+                    if (my === token) document.body.classList.remove("busy");
+                }
+            }
+
+            addEventListener("hashchange", () => show(pageFromHash()));
+            $("#retry").addEventListener("click", async () => { await resolveRef(true); show(pageFromHash()); });
+
+            show(pageFromHash());
         })();
     </script>
 </body>

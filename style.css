@@ -26,6 +26,11 @@
     --ring: color-mix(in srgb, var(--accent) 22%, transparent);
     --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
     --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --bg-raised: var(--panel);
+    --border: var(--line);
+    --radius: var(--r);
+    --text: var(--fg);
+    --text-dim: var(--muted);
 }
 
 /* ───────── base ───────── */
@@ -50,6 +55,23 @@ body {
     background: var(--bg);
     background-image: radial-gradient(900px circle at 50% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%);
     background-repeat: no-repeat;
+}
+
+.credit {
+    padding: 18px 24px 26px;
+    text-align: center;
+    font-size: .74rem;
+    color: var(--muted);
+}
+
+.credit a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.credit a:hover {
+    color: var(--fg)
 }
 
 body.playing {
@@ -300,6 +322,34 @@ footer .wrap {
 
 .stack {
     padding-bottom: 90px
+}
+
+/* plain text pages (about) */
+.prose>h1 {
+    margin: 56px 0 28px;
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    font-weight: 200;
+    letter-spacing: -.04em;
+    line-height: 1.05;
+    background: linear-gradient(180deg, #fff 30%, #74747f);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.prose>h2 {
+    margin: 32px 0 8px;
+    font-size: .72rem;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.prose>p {
+    font-size: .95rem;
+    line-height: 1.65;
+    color: color-mix(in srgb, var(--fg) 85%, transparent);
 }
 
 /* ───────── form controls ───────── */
