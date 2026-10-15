@@ -381,12 +381,13 @@
             };
             const CDN = `https://cdn.jsdelivr.net/gh/${CONFIG.repo}@${CONFIG.ref}/`;
             const LOCAL = new URL("./", location.href).href;
-            const LOCAL_FIRST = /[?&]local\b/.test(location.search);
+            const LOCAL_FIRST = /[?&]local\b/.test(location.search) || location.hostname.includes("localhost")
 
             const $ = s => document.querySelector(s);
             const frame = $("#frame");
             const cache = new Map();
             let token = 0, pageTitle = "silence";
+            window.currentpage = CONFIG.home;  // for the shell to know which page is in the frame
 
             /* ───────── settings ─────────
                The settings page talks to this through  window.parent.silence.
@@ -631,6 +632,7 @@
             /* ───────── load ───────── */
             async function load(want) {
                 const name = isUnlocked() ? want : "disguise";   // locked: every route is the typing test
+                window.currentpage = name;
                 const my = ++token;
                 setState("loading");
                 frame.removeAttribute("srcdoc");
