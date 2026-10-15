@@ -29,4 +29,4 @@ enabled = true
 #   npx wrangler deploy
 #
 # Game files are served straight from the public R2 bucket
-# (pub-31ddb721e92142be8b2deee228c36013.r2.dev), so no R2 binding is needed here.
+# (https://r2-temp.app/), so no R2 binding is needed here.
