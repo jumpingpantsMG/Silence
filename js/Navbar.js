@@ -8,6 +8,7 @@ const navbar = `<header>
             <div class="links">
                 <a href="index.html">games</a>
                 <a href="soundboard.html">soundboard</a>
+                <a href="ai.html">ai</a>
                 <a href="forms.html">forms</a>
                 <a href="about.html">about</a>
                 <a href="settings.html">settings</a>

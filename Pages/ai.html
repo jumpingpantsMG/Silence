@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>silence · ai</title>
+    <meta name="theme-color" content="#08080a">
+    <link rel="stylesheet" href="../style.css">
+    <link rel="icon" href="../Silence-logo.png" type="image/png">
+    <script src="../js/Navbar.js"></script>
+</head>
+
+<body>
+
+    <main class="wrap narrow stack">
+        <section class="head">
+            <h1>ai</h1>
+            <p>ask anything. free, no account. powered by <a class="u" href="https://pollinations.ai" target="_blank"
+                    rel="noopener">pollinations.ai</a>.</p>
+        </section>
+
+        <section class="panel chat">
+            <div class="msgs" id="msgs" aria-live="polite">
+                <div class="chat-empty" id="empty">nothing here yet. say something.</div>
+            </div>
+
+            <form class="composer" id="f" autocomplete="off">
+                <textarea id="q" rows="1" maxlength="4000" placeholder="message…"></textarea>
+                <button class="btn primary" id="send" type="submit">send</button>
+            </form>
+            <div class="hint"><span>enter to send · shift+enter for a new line</span>
+                <button class="linkish" id="clear" type="button">clear chat</button></div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="wrap"><span>silence</span><span>chats stay in your browser</span></div>
+    </footer>
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+        (() => {
+            const API = "https://text.pollinations.ai/openai";
+            const MODEL = "openai";
+            const SYSTEM = "You are a helpful, friendly assistant. Keep answers clear and concise.";
+            const KEY = "silence:aiChat";
+            const KEEP = 20;              // past messages sent with each request
+
+            const $ = s => document.querySelector(s);
+            const msgs = $("#msgs"), empty = $("#empty"), q = $("#q"), send = $("#send"), toastEl = $("#toast");
+
+            let history = [];
+            try { history = JSON.parse(localStorage.getItem(KEY)) || []; } catch { }
+            const save = () => { try { localStorage.setItem(KEY, JSON.stringify(history.slice(-100))); } catch { } };
+
+            let tt;
+            function toast(msg, bad) {
+                toastEl.textContent = msg;
+                toastEl.classList.toggle("err", !!bad);
+                toastEl.classList.add("show");
+                clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove("show"), 3200);
+            }
+
+            // tiny markdown: ```code```, `code`, **bold**. Everything is escaped first.
+            const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+            const md = s => esc(s)
+                .replace(/```[\w-]*\n?([\s\S]*?)(```|$)/g, (m, code) => `<pre><code>${code.replace(/\n$/, "")}</code></pre>`)
+                .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+                .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+
+            function bubble(role, text) {
+                empty.hidden = true;
+                const el = document.createElement("div");
+                el.className = `msg ${role}`;
+                el.innerHTML = md(text);
+                msgs.append(el);
+                el.scrollIntoView({ block: "end" });
+                return el;
+            }
+
+            history.forEach(m => bubble(m.role, m.content));
+
+            let ctl = null;
+            const busy = on => { send.textContent = on ? "stop" : "send"; send.classList.toggle("primary", !on); };
+
+            async function ask(text) {
+                history.push({ role: "user", content: text });
+                save();
+                bubble("user", text);
+                const out = bubble("assistant", "");
+                out.classList.add("typing");
+
+                ctl = new AbortController();
+                busy(true);
+                let reply = "";
+                try {
+                    const res = await fetch(API, {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        signal: ctl.signal,
+                        body: JSON.stringify({
+                            model: MODEL,
+                            stream: true,
+                            messages: [{ role: "system", content: SYSTEM }, ...history.slice(-KEEP)],
+                        }),
+                    });
+                    if (res.status === 429) throw new Error("the free ai is busy, wait a few seconds and try again");
+                    if (!res.ok || !res.body) throw new Error("the ai didn't answer, try again");
+
+                    // server-sent events: lines of "data: {json}", ending with "data: [DONE]"
+                    const reader = res.body.getReader(), dec = new TextDecoder();
+                    let buf = "";
+                    for (; ;) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        buf += dec.decode(value, { stream: true });
+                        const lines = buf.split("\n");
+                        buf = lines.pop();
+                        for (const line of lines) {
+                            const data = line.replace(/^data:\s*/, "").trim();
+                            if (!data || data === "[DONE]" || !line.startsWith("data:")) continue;
+                            try {
+                                const piece = JSON.parse(data).choices?.[0]?.delta?.content;
+                                if (piece) {
+                                    reply += piece;
+                                    out.classList.remove("typing");
+                                    out.innerHTML = md(reply);
+                                    out.scrollIntoView({ block: "end" });
+                                }
+                            } catch { }
+                        }
+                    }
+                    if (!reply) throw new Error("the ai sent an empty answer, try again");
+                } catch (e) {
+                    if (e.name !== "AbortError") toast(e.message || "couldn't reach the ai", true);
+                } finally {
+                    out.classList.remove("typing");
+                    if (reply) {
+                        history.push({ role: "assistant", content: reply });
+                        save();
+                    } else {
+                        out.remove();
+                    }
+                    ctl = null;
+                    busy(false);
+                }
+            }
+
+            $("#f").addEventListener("submit", e => {
+                e.preventDefault();
+                if (ctl) { ctl.abort(); return; }
+                const text = q.value.trim();
+                if (!text) return;
+                q.value = "";
+                grow();
+                ask(text);
+            });
+
+            q.addEventListener("keydown", e => {
+                if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#f").requestSubmit(); }
+            });
+            const grow = () => { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 200) + "px"; };
+            q.addEventListener("input", grow);
+
+            $("#clear").addEventListener("click", () => {
+                if (ctl) ctl.abort();
+                history = [];
+                save();
+                msgs.querySelectorAll(".msg").forEach(m => m.remove());
+                empty.hidden = false;
+                q.focus();
+            });
+        })();
+    </script>
+</body>
+
+</html>

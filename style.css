@@ -5,6 +5,8 @@
    variables and data-motion attribute from the settings page.
    ─────────────────────────────────────────────────────────── */
 
+@import url("https://fonts.googleapis.com/css2?family=Funnel+Sans:ital,wght@0,300..800;1,300..800&display=swap");
+
 /* ───────── tokens ───────── */
 :root {
     color-scheme: dark;
@@ -24,7 +26,7 @@
     --ease: cubic-bezier(.2, .7, .2, 1);
     --card-min: 210px;
     --ring: color-mix(in srgb, var(--accent) 22%, transparent);
-    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+    --font: "Funnel Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --bg-raised: var(--panel);
     --border: var(--line);
@@ -1756,4 +1758,104 @@ body.tp-done .tp-res {
 
 #key {
     min-width: 72px
+}
+/* ───────── ai chat ───────── */
+.u {
+    text-decoration: underline;
+    text-underline-offset: 3px
+}
+
+.chat {
+    display: grid;
+    gap: 14px
+}
+
+.msgs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 240px;
+    max-height: 58vh;
+    overflow-y: auto;
+    padding-right: 4px
+}
+
+.chat-empty {
+    margin: auto;
+    color: var(--muted);
+    font-size: .85rem
+}
+
+.msg {
+    max-width: 85%;
+    padding: 11px 15px;
+    border-radius: 16px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere
+}
+
+.msg.user {
+    align-self: flex-end;
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    border-bottom-right-radius: 6px
+}
+
+.msg.assistant {
+    align-self: flex-start;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-bottom-left-radius: 6px
+}
+
+.msg.typing::after {
+    content: "thinking…";
+    color: var(--muted)
+}
+
+.msg code {
+    font-family: var(--mono);
+    font-size: .86em;
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, .07)
+}
+
+.msg pre {
+    margin: 8px 0;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--bg);
+    overflow-x: auto
+}
+
+.msg pre code {
+    padding: 0;
+    background: none
+}
+
+.composer {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end
+}
+
+.composer textarea {
+    min-height: 46px;
+    max-height: 200px;
+    resize: none
+}
+
+.composer .btn {
+    height: 46px;
+    flex-shrink: 0
+}
+
+.linkish {
+    color: var(--muted);
+    font-size: inherit
+}
+
+.linkish:hover {
+    color: var(--fg)
 }
