@@ -49,6 +49,13 @@ This project is static, so there is usually no dependency installation required 
 
 If the site is just HTML/CSS/JS files, you can serve it directly from the repository root:
 
+(highly recomended)
+```bash
+wrangler pages dev . --port 8000
+```
+
+OR
+
 ```bash
 python3 -m http.server 8000
 ```
