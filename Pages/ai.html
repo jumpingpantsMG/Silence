@@ -16,8 +16,7 @@
     <main class="wrap narrow stack">
         <section class="head">
             <h1>ai</h1>
-            <p>ask anything. free, no account. powered by <a class="u" href="https://pollinations.ai" target="_blank"
-                    rel="noopener">pollinations.ai</a>.</p>
+            <p>ask anything. free, no account. powered by gemini.</p>
         </section>
 
         <section class="panel chat">
@@ -30,7 +29,8 @@
                 <button class="btn primary" id="send" type="submit">send</button>
             </form>
             <div class="hint"><span>enter to send · shift+enter for a new line</span>
-                <button class="linkish" id="clear" type="button">clear chat</button></div>
+                <button class="linkish" id="clear" type="button">clear chat</button>
+            </div>
         </section>
     </main>
 
@@ -41,9 +41,7 @@
 
     <script>
         (() => {
-            const API = "https://text.pollinations.ai/openai";
-            const MODEL = "openai";
-            const SYSTEM = "You are a helpful, friendly assistant. Keep answers clear and concise.";
+            const API = "/api/chat";
             const KEY = "silence:aiChat";
             const KEEP = 20;              // past messages sent with each request
 
@@ -99,11 +97,7 @@
                         method: "POST",
                         headers: { "content-type": "application/json" },
                         signal: ctl.signal,
-                        body: JSON.stringify({
-                            model: MODEL,
-                            stream: true,
-                            messages: [{ role: "system", content: SYSTEM }, ...history.slice(-KEEP)],
-                        }),
+                        body: JSON.stringify({ messages: history.slice(-KEEP) })
                     });
                     if (res.status === 429) throw new Error("the free ai is busy, wait a few seconds and try again");
                     if (!res.ok || !res.body) throw new Error("the ai didn't answer, try again");
