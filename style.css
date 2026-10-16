@@ -301,6 +301,69 @@ footer .wrap {
     margin-top: 22px
 }
 
+/* ───────── updates ───────── */
+
+.update-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, .8);
+}
+
+.update-overlay .update-content {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 26px;
+    max-width: 380px;
+    width: 100%;
+}
+
+.update-content h2 {
+    font-size: 1.2rem;
+    font-weight: 500;
+    letter-spacing: -.01em;
+    text-transform: none;
+    color: var(--fg);
+    margin-bottom: 8px
+}
+
+.update-content p {
+    color: var(--muted);
+    font-size: .9rem;
+    margin-bottom: 12px
+}
+
+.update-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 12px
+}
+
+.update-actions button {
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .04);
+    font-size: .78rem;
+    transition: .2s;
+}
+
+.update-actions button:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent)
+}
+
+.update-meta {
+    font-size: .78rem;
+    color: var(--muted);
+    margin-top: 8px
+}
+
 /* ───────── panels ───────── */
 .panel {
     padding: 26px;
@@ -1759,6 +1822,7 @@ body.tp-done .tp-res {
 #key {
     min-width: 72px
 }
+
 /* ───────── ai chat ───────── */
 .u {
     text-decoration: underline;

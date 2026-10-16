@@ -385,6 +385,29 @@
             const LOCAL = new URL("./", location.href).href;
             const LOCAL_FIRST = /[?&]local\b/.test(location.search) || location.hostname.includes("localhost")
 
+            async function checkForUpdates(page = 1, perPage = 1) {
+                try {
+                    const apiUrl = `https://api.github.com/repos/jumpingpantsmg/Silence/commits?page=${page}&per_page=${perPage}`;
+
+                    const res = await fetch(apiUrl);
+
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}`);
+                    }
+
+                    const commits = await res.json();
+
+                    if (!Array.isArray(commits) || commits.length === 0) {
+                        return [];
+                    }
+
+                    return commits;
+                } catch (err) {
+                    console.warn("Update check failed:", err);
+                    return [];
+                }
+            }
+
             const $ = s => document.querySelector(s);
             const stage = $("#stage");
             const cache = new Map();      // page name -> html text
@@ -392,6 +415,7 @@
             const titles = new Map();     // page name -> document title
             let token = 0, gen = 0, current = null, pageTitle = "silence";
             window.currentpage = CONFIG.home;  // for the shell to know which page is showing
+            window.checkforupdates = checkForUpdates;
 
             const SANDBOX = "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock allow-modals allow-downloads allow-orientation-lock";
             const ALLOW = "fullscreen; gamepad; autoplay; clipboard-write; accelerometer; gyroscope";
