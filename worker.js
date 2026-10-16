@@ -139,8 +139,11 @@ async function ai(request, env) {
     if (!env.GEMINI_API_KEY) return json({ error: "not configured" }, 503);
 
     let body;
-    console.log(request, request.body, request.json());
-    try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+    try {
+        body = await request.json();
+    } catch {
+        return json({ error: "bad json" }, 400);
+    }
 
     const messages = (Array.isArray(body.messages) ? body.messages : [])
         .filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
@@ -148,23 +151,58 @@ async function ai(request, env) {
         .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
     if (!messages.length) return json({ error: "no messages" }, 400);
 
-    const res = await fetch(GEMINI_URL, {
-        method: "POST",
-        headers: {
-            "content-type": "application/json",
-            Authorization: `Bearer ${env.GEMINI_API_KEY}`,
-        },
-        body: JSON.stringify({
-            model: MODEL,
-            stream: true,
-            messages: [{ role: "system", content: SYSTEM }, ...messages],
-        }),
-    });
+    let res;
 
-    if (!res.ok || !res.body) return json({ error: "upstream error" }, res.status || 502);
+    for (let attempt = 0; attempt < 4; attempt++) {
+        res = await fetch(GEMINI_URL, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                Authorization: `Bearer ${env.GEMINI_API_KEY}`,
+            },
+            body: JSON.stringify({
+                model: MODEL,
+                stream: true,
+                messages: [
+                    { role: "system", content: SYSTEM },
+                    ...messages,
+                ],
+            }),
+        });
+
+        // Success: continue streaming the response.
+        if (res.ok && res.body) break;
+
+        // Retry only temporary server/capacity errors.
+        if (![408, 429, 500, 502, 503, 504].includes(res.status)
+            || attempt === 3) {
+            const details = await res.text();
+            console.error("Gemini API error:", res.status, details);
+
+            return json({
+                error: "Gemini is temporarily unavailable. Please try again.",
+            }, 502);
+        }
+
+        // Discard the failed response before retrying.
+        await res.body?.cancel();
+
+        const delay = 1000 * (2 ** attempt)
+            + Math.random() * 500;
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    if (!res?.ok || !res.body) {
+        return json({ error: "Gemini is temporarily unavailable." }, 502);
+    }
 
     return new Response(res.body, {
-        headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store" },
+        headers: {
+            "content-type": "text/event-stream; charset=utf-8",
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff",
+        },
     });
 }
 
