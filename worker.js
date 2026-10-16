@@ -139,6 +139,7 @@ async function ai(request, env) {
     if (!env.GEMINI_API_KEY) return json({ error: "not configured" }, 503);
 
     let body;
+    console.log(request, request.body, request.json());
     try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
 
     const messages = (Array.isArray(body.messages) ? body.messages : [])
