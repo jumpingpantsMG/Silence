@@ -15,7 +15,10 @@ dist/
 .tmp-*
 
 ga-service-account.json
+.dev.vars
+.dev.vars.*
 .env
+.env.*
 node_modules
 
 # Git internal files (nested repos) - never commit these
