@@ -1,198 +1,212 @@
 # Silence
 
-A simple static site project built with HTML, CSS, and JavaScript.
+A gaming site built from plain HTML, CSS and JavaScript, served by a Cloudflare Worker.
 
-This repository contains a lightweight front-end app. The instructions below cover the full setup process, local development workflow, and how to preview the project in a browser.
+The Worker does two jobs: it serves the static site, and it runs a small API for forms, the AI page and the global chat.
 
 ---
 
 ## Table of contents
 
+- [Features](#features)
 - [Prerequisites](#prerequisites)
-- [Clone the repository](#clone-the-repository)
-- [Set up the project](#set-up-the-project)
+- [Setup](#setup)
 - [Run locally](#run-locally)
+- [Configuration](#configuration)
 - [Project structure](#project-structure)
-- [Development notes](#development-notes)
+- [API](#api)
 - [Deployment](#deployment)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Prerequisites
+## Features
 
-Before you begin, make sure you have:
-
-- Git
-- A modern browser such as Chrome, Firefox, Edge, or Safari
-- Optional: Python 3 for serving static files locally
-- Optional: Node.js and npm if you want to use JS tooling or a local dev server package
+- **Games**: served from a Cloudflare R2 public bucket.
+- **Forms**: requests, bug reports and feedback, stored in KV and managed from the admin page.
+- **AI**: a streaming chat page that talks to Gemini through the Worker, so the API key never reaches the browser.
+- **Global chat**: usernames, a global room plus user-made rooms (public, private or admin-only), replies, edits, file sharing, reports, and staff moderation.
+- **Soundboard**, **settings** and an **admin** page.
 
 ---
 
-## Clone the repository
+## Prerequisites
 
-Open a terminal and run:
+- Git
+- Node.js 18 or newer (used through `npx`, so nothing is installed globally)
+- A Cloudflare account (the free plan works for development)
+
+---
+
+## Setup
 
 ```bash
 git clone https://github.com/jumpingpantsMG/Silence.git
 cd Silence
+npx wrangler login
 ```
 
----
+### 1. Create the KV namespace
 
-## Set up the project
-
-This project is static, so there is usually no dependency installation required unless you plan to use tooling such as a local preview server.
-
-### Option 1: Simple static preview (recommended)
-
-If the site is just HTML/CSS/JS files, you can serve it directly from the repository root:
-
-(highly recomended)
-```bash
-wrangler pages dev . --port 8000
-```
-
-OR
+The Worker stores forms, chat messages, rooms and files in one KV namespace bound as `FORMS`.
 
 ```bash
-python3 -m http.server 8000
+npx wrangler kv namespace create FORMS
 ```
 
-Then open:
+Copy the `id` it prints into `wrangler.toml`.
 
-```text
-http://localhost:8000
-```
+### 2. Check `wrangler.toml`
 
-### Option 2: Use a Node-based local dev server
+`worker.js` expects these bindings:
 
-If you want a live reload server or prefer Node tooling:
+| Binding  | Type                | Purpose                         |
+| -------- | ------------------- | ------------------------------- |
+| `ASSETS` | static assets       | the site itself                 |
+| `FORMS`  | KV namespace        | forms, chat messages, rooms, files |
+
+### 3. Add secrets
 
 ```bash
-npm install
-npm run dev
+npx wrangler secret put ADMIN_TOKEN       # admin page login, also signs chat sessions
+npx wrangler secret put GEMINI_API_KEY    # the AI page
+npx wrangler secret put CHAT_ADMINS       # optional: extra chat staff, see below
+npx wrangler secret put CHAT_SECRET       # optional: separate key for chat sessions
 ```
 
-If no `dev` script exists, you can also run a lightweight server without installing dependencies:
+Secrets cannot be viewed again after you set them. If one leaks, set a new value.
 
-```bash
-npx live-server --port=8000
-```
+For local development, put the same values in a `.dev.vars` file in the repo root. Keep it out of git.
 
-or
-
-```bash
-npx http-server -c-1 .
+```ini
+ADMIN_TOKEN=pick-something-long
+GEMINI_API_KEY=your-key
+CHAT_ADMINS=alice:a-long-password
 ```
 
 ---
 
 ## Run locally
 
-From the repository root:
+Use Wrangler, not a plain file server. A plain server (`python3 -m http.server`, `live-server`) only serves the static files, so forms, the AI page and the chat will not work.
 
 ```bash
-python3 -m http.server 8000
+npx wrangler dev
 ```
 
-Then browse to:
+Then open the address it prints (usually `http://localhost:8787`). Local KV is simulated on your machine and starts empty.
 
-```text
-http://localhost:8000
-```
+---
 
-For automatic refresh while editing, use:
+## Configuration
 
-```bash
-npx live-server --port=8000
-```
+### Chat staff
+
+The chat sign-in asks staff usernames for a password. Everyone else just picks a username.
+
+- `ADMIN_TOKEN` is always a staff account with the username `admin`, using the token as its password.
+- `CHAT_ADMINS` adds more staff. The format is `name:password`, separated by commas.
+
+  ```text
+  alice:first-password,bob:second-password
+  ```
+
+  Passwords can contain spaces but not commas, and they are matched exactly (case-sensitive).
+- Staff can delete other people's messages, mute and ban users, create admin-only rooms, and see every room.
+
+### Chat limits
+
+| Setting               | Value                                   |
+| --------------------- | --------------------------------------- |
+| Messages kept         | newest 100 per room                     |
+| Message length        | 300 characters                          |
+| File size             | 5 MB                                    |
+| Files kept            | newest 10 across the whole site         |
+| Rooms                 | up to 50                                |
+| Session length        | 24 hours (chat pauses after 10 idle minutes) |
+| Message and file expiry | 7 days                                |
+
+The word filter is the `BLOCKED_WORDS` list near the top of the chat section in `worker.js`. Add your own words there. Links are blocked for everyone except staff.
+
+### KV free-plan limits
+
+Cloudflare's free KV plan allows roughly 1,000 writes and 100,000 reads per day. A chat message costs about 3 writes, and every open chat tab polls every 5 seconds. A busy chat can hit those limits. When it does, posting fails until the daily reset, and forms stop saving as well. A paid Workers plan removes the problem.
 
 ---
 
 ## Project structure
 
-A typical structure for this project may look like this:
-
 ```text
 Silence/
-├── index.html
-├── css/
-│   └── style.css
-├── js/
-│   └── script.js
-├── assets/
-│   ├── images/
-│   └── icons/
-├── README.md
-└── LICENSE (optional)
+├── index.html        shell that loads the pages
+├── pages/            one HTML file per page (games, forms, soundboard, settings, admin, ai, chat)
+├── js/               shared scripts, for example Navbar.js
+├── style.css         shared styles used by every page
+├── worker.js         the Cloudflare Worker (static site + API)
+├── wrangler.toml     Cloudflare configuration
+└── README.md
 ```
 
-If your repository layout differs, keep the actual files and update this section to match the real structure.
+Pages share `style.css` and the navbar instead of repeating CSS. If a file here does not match your checkout, trust the checkout and update this list.
 
 ---
 
-## Development notes
+## API
 
-- Edit the HTML in the root folder or page templates.
-- Update styles inside `css/`.
-- Add interactivity in `js/`.
-- Keep assets in `assets/` so they are easy to reference with relative paths.
-- Test changes by refreshing the local preview in the browser.
+All routes are served by `worker.js`. Anything that is not under `/api/` falls through to the static site.
+
+| Route                              | What it does                                              |
+| ---------------------------------- | --------------------------------------------------------- |
+| `POST /api/forms`                  | submit a request, bug report or feedback (1 per minute per IP) |
+| `/api/admin/submissions[/:id]`     | list, read, mark done and delete submissions. Needs `Authorization: Bearer <ADMIN_TOKEN>` |
+| `POST /api/chat`                   | AI proxy. Streams the Gemini reply back as server-sent events |
+| `/api/global/...`                  | global chat: login, rooms, messages, files, reports, moderation |
+| `/api/admin/global/...`            | chat moderation with the admin token, handy for `curl`    |
 
 ---
 
 ## Deployment
 
-Because this is a static site, deployment is usually simple.
+```bash
+npx wrangler deploy
+```
 
-### GitHub Pages
+This publishes the Worker and the static assets together. The secrets and the KV binding must already exist on the account (see [Setup](#setup)).
 
-1. Push the repo to GitHub.
-2. In the repository settings, open Pages.
-3. Choose the branch to publish from, usually `main`.
-4. Set the folder to the root or a static output folder if applicable.
+After deploying, check these three things:
 
-### Netlify / Vercel
-
-- Connect the GitHub repository.
-- Use the default static configuration if no build step is required.
-- Deploy the site directly from the main branch or a production folder.
+1. The site loads and the pages navigate.
+2. Submitting a form shows up on the admin page.
+3. The AI page streams an answer and the chat lets you sign in.
 
 ---
 
 ## Troubleshooting
 
-### The page does not load
+### `POST /api/chat` returns 404
 
-- Make sure the server is running from the repo root.
-- Check that the URL is correct: `http://localhost:8000`
-- Ensure the HTML file references assets using valid relative paths.
+The request is not reaching the Worker. Run `npx wrangler dev` or open the deployed Worker URL. A plain static server cannot serve the API.
 
-### JavaScript is not working
+### The AI page says "not configured" or "temporarily unavailable"
 
-- Confirm the script file is linked correctly in the HTML.
-- Open browser developer tools and check the console for errors.
-- Verify there are no broken file paths or missing assets.
+`GEMINI_API_KEY` is missing. Set it with `npx wrangler secret put GEMINI_API_KEY`, or add it to `.dev.vars` locally. Short outages on Google's side are retried automatically a few times before the page shows an error.
 
-### Live reload is not updating
+### The admin page says "unauthorized"
 
-- Restart the server.
-- Make sure the file path is correct and the browser is actually loading the updated files.
+The token must match `ADMIN_TOKEN` exactly. After 10 wrong tries from one IP, sign-in is blocked for 5 minutes.
 
----
+### Chat says "chat is not configured"
 
-## Summary
+Set `ADMIN_TOKEN` or `CHAT_SECRET`. Chat sessions are signed with one of them.
 
-This project is intended to be a lightweight static website. The simplest way to get started is:
+### Staff sign-in says "incorrect password"
 
-```bash
-git clone https://github.com/jumpingpantsMG/Silence.git
-cd Silence
-python3 -m http.server 8000
-```
+Passwords in `CHAT_ADMINS` are matched exactly, including capital letters and apostrophes. Check for a stray space or comma in the secret.
 
-Then open http://localhost:8000 in your browser.
+### Chat or forms stop saving
 
-If you want, I can also customize this README further for the actual contents of the repo once you share the project files or structure.
+You have probably reached the free-plan KV limits (see [Configuration](#kv-free-plan-limits)). They reset daily.
+
+### Changes do not show up after deploying
+
+Hard-refresh the page. If pages are loaded through a CDN, it may still be serving an older copy for a while.

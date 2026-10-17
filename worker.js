@@ -1,10 +1,16 @@
 // silence · Cloudflare Worker
-// Serves the static site (ASSETS binding) and handles two things under /api:
+// Serves the static site (ASSETS binding) and handles, under /api:
 //   POST   /api/forms                    public form submissions  -> KV
 //   *      /api/admin/submissions[/:id]  token-protected admin    -> KV
+//   POST   /api/chat                     gemini proxy (streaming)
+//   *      /api/global/...               global chat (rooms, messages, files, reports)
+//   *      /api/admin/global/...         chat moderation, ADMIN_TOKEN only
+//   *      /api/global/mod/...           same moderation, for signed-in chat staff
 //
 // Bindings (see wrangler.toml):  ASSETS, FORMS (KV)
-// Secret:                        ADMIN_TOKEN   (wrangler secret put ADMIN_TOKEN)
+// Secrets:                       ADMIN_TOKEN, GEMINI_API_KEY
+// Optional secrets:              CHAT_ADMINS = "alice:password1,bob:password2"  (extra chat staff)
+//                                CHAT_SECRET  signs chat sessions (defaults to ADMIN_TOKEN)
 
 const TYPES = new Set(["request", "bug", "feedback"]);
 const STATUSES = new Set(["new", "done"]);
@@ -38,6 +44,14 @@ async function isAdmin(request, env) {
 }
 
 const clientIp = (request) => request.headers.get("cf-connecting-ip") || "unknown";
+
+// browsers always send Origin on POST; block other sites from using our endpoints
+function isSameOrigin(request) {
+    const origin = request.headers.get("origin");
+    const mine = new URL(request.url).origin;
+    if (origin) return origin === mine;
+    return request.headers.get("sec-fetch-site") === "same-origin";
+}
 
 /* ───────── public: submit a form ───────── */
 async function submitForm(request, env) {
@@ -91,6 +105,7 @@ async function admin(request, env, url) {
     }
 
     const parts = url.pathname.split("/").filter(Boolean); // ["api","admin","submissions",":id"]
+    if (parts[2] === "global") return adminGlobal(request, env, parts);
     if (parts[2] !== "submissions") return json({ error: "not found" }, 404);
     const id = parts[3] ? decodeURIComponent(parts[3]) : null;
     if (id && !id.startsWith("sub:")) return json({ error: "bad id" }, 400);
@@ -135,6 +150,7 @@ async function admin(request, env, url) {
     return json({ error: "method not allowed" }, 405);
 }
 
+/* ───────── ai ───────── */
 async function ai(request, env) {
     if (!env.GEMINI_API_KEY) return json({ error: "not configured" }, 503);
 
@@ -206,6 +222,711 @@ async function ai(request, env) {
     });
 }
 
+/* ═════════════ global chat (modelled on nova hub's chat) ═════════════
+   Flow: username gate (staff names ask for their password) -> signed 24h session token
+         -> lobby (global chat + rooms) -> chat.  Sessions are stateless (HMAC-signed), so
+         login / renew / leave cost zero KV writes.
+
+   Secrets:  ADMIN_TOKEN               signs sessions; also staff "admin" + this password
+             CHAT_ADMINS (optional)    "alice:password1,bob:password2"  extra staff accounts
+             CHAT_SECRET (optional)    signs sessions instead of ADMIN_TOKEN
+
+   KV (FORMS namespace):
+     room:<id>                 room record; list metadata = {name,d,ao,pw,by,ts,la}
+     msg:<room>:<inv>:<rand>   message; the whole message is in metadata so one list() = one poll
+     file:<inv>-<rand>         file bytes; only the newest FILE_KEEP are kept
+     mute:d:<device>           admin mute (TTL = length)
+     ban:u|i|d:<value>         ban by username / ip / device (TTL = length)
+   Reports are written as normal "sub:" records (type "report"). */
+
+const CHAT_KEEP = 100;                 // messages kept per room
+const CHAT_MAX_ROOMS = 50;
+const CHAT_TTL = 7 * 24 * 3600;        // messages / files expire after 7 days untouched
+const ROOM_TTL = 28 * 24 * 3600;       // rooms expire after 28 days without activity
+const TEXT_MAX = 300;
+const SESSION_MS = 24 * 3600 * 1000;
+const FILE_MAX = 5 * 1024 * 1024;      // 5 MB
+const FILE_KEEP = 10;                  // newest N files kept site-wide, older ones are deleted
+const FILE_TYPES = new Set([
+    "image/png", "image/jpeg", "image/gif", "image/webp",
+    "application/pdf", "text/plain", "application/zip",
+    "audio/mpeg", "video/mp4", "video/webm",
+]);
+const RULES_MSG = "that message breaks the chat rules. it was sent to moderators for review. repeated violations can get you banned.";
+
+// ---- word filter + link blocking (add your own words) ----
+const BLOCKED_WORDS = ["fuck", "shit", "bitch", "cunt", "asshole"];
+const LEET = { 0: "o", 1: "i", 3: "e", 4: "a", 5: "s", 7: "t", "@": "a", $: "s" };
+const squash = (s) => s.replace(/(.)\1+/g, "$1"); // fuuuck -> fuck
+const BLOCK_RE = new RegExp(`\\b(${BLOCKED_WORDS.map(squash).join("|")})\\b`);
+const blockedWord = (s) =>
+    BLOCK_RE.test(squash(s.toLowerCase().replace(/[013457@$]/g, (c) => LEET[c]).replace(/[^a-z]+/g, " ")));
+const LINK_RE =
+    /(https?:\/\/|www\.|discord\.gg|\b[a-z0-9-]+\.(com|net|org|io|gg|xyz|ru|co|me|tv|ly|app|dev|link|club|info|shop|site|online|cc|to)\b)/i;
+const hasLink = (s) => LINK_RE.test(s);
+
+// ---- soft per-IP limiter (memory only: no KV writes, resets when the isolate recycles) ----
+const hits = new Map();
+function limited(key, gapMs, perMin) {
+    const now = Date.now();
+    const h = (hits.get(key) || []).filter((t) => now - t < 60000);
+    if ((h.length && now - h[h.length - 1] < gapMs) || h.length >= perMin) return true;
+    h.push(now);
+    hits.set(key, h);
+    if (hits.size > 5000) for (const [k, v] of hits) if (now - v[v.length - 1] > 300000) hits.delete(k);
+    return false;
+}
+// counts failures only; true when the key already has `max` failures in the last `windowMs`
+const failsOf = (key, windowMs) => (hits.get(key) || []).filter((t) => Date.now() - t < windowMs);
+const addFail = (key, windowMs) => { const f = failsOf(key, windowMs); f.push(Date.now()); hits.set(key, f); };
+
+const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, "0")).join("");
+const invTs = (ts) => String(9999999999999 - ts).padStart(13, "0");
+const rand6 = () => crypto.randomUUID().slice(0, 6);
+const bytes = (o) => new TextEncoder().encode(JSON.stringify(o)).length;
+const validRoom = (r) => /^[a-z0-9-]{2,24}$/.test(r);
+const validMsgId = (s) => /^\d{13}:[0-9a-f]{6}$/.test(s);
+const cleanUser = (v) => {
+    const n = clean(v, 32).replace(/\s+/g, " ");
+    return /^[\p{L}\p{N}_.' -]{2,32}$/u.test(n) ? n : "";
+};
+
+// ---- staff + sessions ----
+function staffList(env) {
+    const list = [];
+    if (env.ADMIN_TOKEN) list.push(["admin", env.ADMIN_TOKEN]);
+    for (const p of (env.CHAT_ADMINS || "").split(",")) {
+        const i = p.indexOf(":");
+        const name = p.slice(0, i).trim(), pw = p.slice(i + 1).trim();
+        if (i > 0 && /^[\p{L}\p{N}_.\-]{2,32}$/u.test(name) && pw) list.push([name, pw]);
+    }
+    return list;
+}
+const findStaff = (env, name) => staffList(env).find(([n]) => n.toLowerCase() === name.toLowerCase());
+const secretOf = (env) => env.CHAT_SECRET || env.ADMIN_TOKEN || "";
+
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+const hmacKey = (env) =>
+    crypto.subtle.importKey("raw", new TextEncoder().encode(secretOf(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+async function makeToken(env, payload) {
+    const body = b64u(new TextEncoder().encode(JSON.stringify(payload)));
+    const sig = await crypto.subtle.sign("HMAC", await hmacKey(env), new TextEncoder().encode(body));
+    return body + "." + b64u(sig);
+}
+async function readToken(env, token) {
+    const [body, sig] = String(token).split(".");
+    if (!body || !sig || !secretOf(env)) return null;
+    try {
+        const ok = await crypto.subtle.verify("HMAC", await hmacKey(env), unb64u(sig), new TextEncoder().encode(body));
+        if (!ok) return null;
+        const p = JSON.parse(new TextDecoder().decode(unb64u(body)));
+        return p.exp > Date.now() ? p : null;
+    } catch { return null; }
+}
+// {s: {u,a,d}} signed in · {bad:true} header present but invalid/expired · {} no header
+async function sess(request, env) {
+    const h = request.headers.get("authorization") || "";
+    if (!h.startsWith("Bearer ")) return {};
+    const p = await readToken(env, h.slice(7));
+    return p ? { s: p } : { bad: true };
+}
+const needSession = (a) =>
+    a.s ? null : json({ error: a.bad ? "session expired, sign in again" : "sign in first", auth: true }, 401);
+
+const ipHash = async (ip, env) => hex((await sha256("i:" + ip + secretOf(env))).slice(0, 8));
+const devHash = async (dev, env) => hex((await sha256("d:" + dev + secretOf(env))).slice(0, 8));
+
+// ---- bans / mutes ----
+async function banOf(env, user, ih, dh) {
+    const [a, b, c] = await Promise.all([
+        env.FORMS.get("ban:u:" + user.toLowerCase(), "json"),
+        env.FORMS.get("ban:i:" + ih, "json"),
+        env.FORMS.get("ban:d:" + dh, "json"),
+    ]);
+    return a || b || c;
+}
+const banError = (b) => json({ error: b.reason ? `you are banned: ${b.reason}` : "you are banned", banned: true }, 403);
+
+// ban + mute check before anything is written. staff are never banned or muted.
+async function sendGuard(env, s, ip) {
+    const ih = await ipHash(ip, env);
+    if (s.a) return { ih };
+    const [ban, mute] = await Promise.all([banOf(env, s.u, ih, s.d), env.FORMS.get("mute:d:" + s.d, "json")]);
+    if (ban) return { res: banError(ban) };
+    if (mute) return { res: json({ error: mute.reason || "you were muted by an admin", muted: true }, 403) };
+    return { ih };
+}
+
+// ---- rooms ----
+async function getRoom(env, room) {
+    if (room === "general") return { name: "Global Chat" };
+    const r = await env.FORMS.get("room:" + room, "json");
+    return r && typeof r === "object" ? r : null;
+}
+const roomMeta = (r) => ({ name: r.name, d: r.d || "", ao: r.ao ? 1 : 0, pw: r.ph ? 1 : 0, by: r.by, ts: r.ts, la: r.la || r.ts });
+const putRoom = (env, id, r) =>
+    env.FORMS.put("room:" + id, JSON.stringify(r), { metadata: roomMeta(r), expirationTtl: ROOM_TTL });
+const touched = new Map();
+async function touchRoom(env, id, rec) { // bump "last active" at most every 5 min per room (saves KV writes)
+    if (id === "general" || Date.now() - (touched.get(id) || 0) < 300000) return;
+    touched.set(id, Date.now());
+    await putRoom(env, id, { ...rec, la: Date.now() });
+}
+async function newPass(pw) {
+    const s = crypto.randomUUID().slice(0, 8);
+    return { s, ph: hex(await sha256(s + pw)) };
+}
+async function passOk(env, rec, pw, ip) {
+    if (failsOf("pw:" + ip, 60000).length >= 10) return "limited";
+    if (pw) {
+        const h = hex(await sha256(rec.s + pw));
+        const enc = new TextEncoder();
+        if (h.length === rec.ph.length && crypto.subtle.timingSafeEqual(enc.encode(h), enc.encode(rec.ph))) return "ok";
+        addFail("pw:" + ip, 60000);
+    }
+    return "bad";
+}
+// admin-only rooms are staff only (like nova hub); private rooms need the password (sent as x-room-pass)
+async function roomGate(request, env, rec, s) {
+    if (rec.ao && !s?.a) return json({ error: "this room is for admins only" }, 403);
+    if (!rec.ph || s?.a) return null;
+    if (!s) return json({ error: "sign in first", auth: true }, 401);
+    let pw = "";
+    try { pw = decodeURIComponent(request.headers.get("x-room-pass") || ""); } catch { }
+    const r = await passOk(env, rec, pw, clientIp(request));
+    if (r === "ok") return null;
+    if (r === "limited") return json({ error: "too many wrong passwords, wait a minute" }, 429);
+    return json({ error: "password required", pw: true }, 401);
+}
+const isOwner = (rec, s) => rec.by === s.u && rec.bd === s.d;
+const sameOrigin = (request) => isSameOrigin(request) || json({ error: "forbidden" }, 403);
+
+async function chatGate(request, env, url) {
+    if (!secretOf(env)) return json({ error: "chat is not configured" }, 503);
+    const user = cleanUser(url.searchParams.get("username"));
+    if (!user) return json({ error: "usernames can use letters, numbers, spaces, _ . - ' and must be 2-32 characters" }, 400);
+    const staff = findStaff(env, user);
+    if (!staff && (/admin/i.test(user) || blockedWord(user))) return json({ error: "that username breaks the chat rules" }, 400);
+    const dev = url.searchParams.get("device") || "";
+    if (/^[\w-]{8,64}$/.test(dev) && !staff) {
+        const ban = await banOf(env, user, await ipHash(clientIp(request), env), await devHash(dev, env));
+        if (ban) return banError(ban);
+    }
+    return json({ ok: true, needsPassword: !!staff });
+}
+
+async function chatLogin(request, env) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    if (!secretOf(env)) return json({ error: "chat is not configured" }, 503);
+    const ip = clientIp(request);
+    if (limited("lg:" + ip, 500, 20)) return json({ error: "slow down" }, 429);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+    const user = cleanUser(body?.username);
+    const device = String(body?.deviceId || "");
+    if (!user || !/^[\w-]{8,64}$/.test(device)) return json({ error: "bad username" }, 400);
+
+    const staff = findStaff(env, user);
+    if (staff) {
+        if (failsOf("sf:" + ip, 300000).length >= 10) return json({ error: "too many attempts, try later" }, 429);
+        const given = await sha256(String(body?.password || ""));
+        if (!crypto.subtle.timingSafeEqual(given, await sha256(staff[1]))) {
+            addFail("sf:" + ip, 300000);
+            return json({ error: "incorrect password" }, 401);
+        }
+    } else {
+        if (/admin/i.test(user) || blockedWord(user)) return json({ error: "that username breaks the chat rules" }, 400);
+    }
+    const dh = await devHash(device, env);
+    if (!staff) {
+        const ban = await banOf(env, user, await ipHash(ip, env), dh);
+        if (ban) return banError(ban);
+    }
+    const username = staff ? staff[0] : user;
+    const token = await makeToken(env, { u: username, a: !!staff, d: dh, exp: Date.now() + SESSION_MS });
+    return json({ ok: true, token, username, isAdmin: !!staff });
+}
+
+async function chatRenew(request, env) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    return json({ ok: true, token: await makeToken(env, { ...a.s, exp: Date.now() + SESSION_MS }) });
+}
+
+/* ---------- rooms ---------- */
+async function chatRooms(request, env) {
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const l = await env.FORMS.list({ prefix: "room:", limit: CHAT_MAX_ROOMS });
+    const rooms = l.keys
+        .filter((k) => !k.metadata?.ao || a.s.a) // admin-only rooms are invisible to everyone else
+        .map((k) => ({ id: k.name.slice(5), name: k.metadata.name, d: k.metadata.d, pw: !!k.metadata.pw, ao: !!k.metadata.ao, by: k.metadata.by, ts: k.metadata.ts, la: k.metadata.la }));
+    return json({ rooms: [{ id: "general", name: "Global Chat", d: "everyone can see and join" }, ...rooms] });
+}
+
+async function chatCreateRoom(request, env) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const s = a.s;
+    if (!s.a && limited("r:" + clientIp(request), 20000, 3)) return json({ error: "slow down" }, 429);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+    const name = clean(body?.name, 50).replace(/\s+/g, " ");
+    const d = clean(body?.description, 100).replace(/\s+/g, " ");
+    if (!name) return json({ error: "room name required (max 50 chars)" }, 400);
+    if (!s.a && (blockedWord(name) || blockedWord(d))) return json({ error: "that room name or description breaks the chat rules" }, 400);
+    if (body?.adminOnly && !s.a) return json({ error: "only admins can create admin rooms" }, 403);
+    const pw = clean(body?.password, 40);
+    if (body?.isPrivate && !pw) return json({ error: "password is required for private rooms" }, 400);
+
+    const l = await env.FORMS.list({ prefix: "room:", limit: CHAT_MAX_ROOMS + 1 });
+    if (l.keys.length >= CHAT_MAX_ROOMS) return json({ error: "too many rooms, ask an admin to clean up" }, 400);
+
+    const id = crypto.randomUUID().slice(0, 8);
+    const now = Date.now();
+    const rec = { name, d, ao: !!body?.adminOnly, by: s.u, bd: s.d, ts: now, la: now, ...(body?.isPrivate ? await newPass(pw) : {}) };
+    if (bytes(roomMeta(rec)) > 950) return json({ error: "room name/description too long" }, 400);
+    await putRoom(env, id, rec);
+    return json({ ok: true, room: { id, name, d, pw: !!rec.ph, ao: rec.ao, by: s.u } });
+}
+
+async function chatEditRoom(request, env, id) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    if (id === "general") return json({ error: "can't edit the global chat" }, 400);
+    const rec = await getRoom(env, id);
+    if (!rec) return json({ error: "room not found" }, 404);
+    if (!a.s.a && !isOwner(rec, a.s)) return json({ error: "not authorized" }, 403);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+
+    if (typeof body.name === "string") {
+        const n = clean(body.name, 50).replace(/\s+/g, " ");
+        if (!n) return json({ error: "room name required" }, 400);
+        if (!a.s.a && blockedWord(n)) return json({ error: "that room name breaks the chat rules" }, 400);
+        rec.name = n;
+    }
+    if (typeof body.description === "string") {
+        const d = clean(body.description, 100).replace(/\s+/g, " ");
+        if (!a.s.a && blockedWord(d)) return json({ error: "that description breaks the chat rules" }, 400);
+        rec.d = d;
+    }
+    if (typeof body.isPrivate === "boolean") {
+        if (!body.isPrivate) { delete rec.s; delete rec.ph; }
+        else {
+            const pw = clean(body.password, 40);
+            if (pw) Object.assign(rec, await newPass(pw));
+            else if (!rec.ph) return json({ error: "password is required for private rooms" }, 400);
+        }
+    }
+    if (typeof body.adminOnly === "boolean" && a.s.a) rec.ao = body.adminOnly;
+    if (bytes(roomMeta(rec)) > 950) return json({ error: "room name/description too long" }, 400);
+    await putRoom(env, id, rec);
+    return json({ ok: true, room: { id, name: rec.name, d: rec.d, pw: !!rec.ph, ao: !!rec.ao } });
+}
+
+async function wipeRoomMessages(env, id) {
+    let cursor;
+    do {
+        const l = await env.FORMS.list({ prefix: `msg:${id}:`, limit: 1000, cursor });
+        await Promise.all(l.keys.map((k) => env.FORMS.delete(k.name)));
+        cursor = l.list_complete ? null : l.cursor;
+    } while (cursor);
+}
+
+async function chatDeleteRoom(request, env, id) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    if (id === "general") return json({ error: "can't delete the global chat" }, 400);
+    const rec = await getRoom(env, id);
+    if (!rec) return json({ error: "room not found" }, 404);
+    if (!a.s.a && !isOwner(rec, a.s)) return json({ error: "not authorized" }, 403);
+    await wipeRoomMessages(env, id);
+    await env.FORMS.delete("room:" + id);
+    return json({ ok: true });
+}
+
+async function chatJoin(request, env, id) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const rec = await getRoom(env, id);
+    if (!rec) return json({ error: "room not found" }, 404);
+    if (rec.ao && !a.s.a) return json({ error: "this room is for admins only" }, 403);
+    if (rec.ph && !a.s.a) {
+        let body = {};
+        try { body = await request.json(); } catch { }
+        const r = await passOk(env, rec, clean(body?.password, 40), clientIp(request));
+        if (r === "limited") return json({ error: "too many wrong passwords, wait a minute" }, 429);
+        if (r !== "ok") return json({ error: "incorrect password" }, 401);
+    }
+    return json({ ok: true, room: { id, name: rec.name, d: rec.d || "", by: rec.by || "" } });
+}
+
+/* ---------- messages ---------- */
+const metaOf = (v) => {
+    const m = { n: v.n, t: v.t, ts: v.ts };
+    for (const k of ["rp", "f", "a", "u", "e", "et"]) if (v[k] !== undefined) m[k] = v[k];
+    return m;
+};
+
+async function storeMessage(env, room, meta, extra) {
+    const ts = Date.now();
+    const id = `${invTs(ts)}:${rand6()}`;
+    const m = { ...meta, ts };
+    if (bytes(m) > 980) return json({ error: "message too long (emoji and non-english letters count extra)" }, 400);
+    await env.FORMS.put(`msg:${room}:${id}`, JSON.stringify({ ...m, ...extra }), { metadata: m, expirationTtl: CHAT_TTL });
+    // keep only the newest CHAT_KEEP (ascending key order = newest first)
+    const l = await env.FORMS.list({ prefix: `msg:${room}:`, limit: CHAT_KEEP + 20 });
+    await Promise.all(l.keys.slice(CHAT_KEEP).map((k) => env.FORMS.delete(k.name)));
+    return json({ ok: true, id });
+}
+
+async function chatMessages(request, env, room, url) {
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const rec = await getRoom(env, room);
+    if (!rec) return json({ error: "no such room" }, 404);
+    const denied = await roomGate(request, env, rec, a.s);
+    if (denied) return denied;
+
+    const l = await env.FORMS.list({ prefix: `msg:${room}:`, limit: CHAT_KEEP });
+    const items = l.keys.map((k) => ({ id: k.name.split(":").slice(2).join(":"), ...k.metadata })).reverse(); // oldest -> newest
+    // cheap "nothing changed" answer; edits bump `et`, deletes change the count
+    const v = items.length + ":" + (items.length ? items[items.length - 1].id : "") + ":" + items.reduce((x, m) => Math.max(x, m.et || 0), 0);
+    if (url.searchParams.get("v") === v) return json({ same: true });
+    return json({ v, items });
+}
+
+async function autoReport(env, room, s, text) {
+    if (limited("ar:" + s.u, 30000, 2)) return;
+    const ts = Date.now();
+    const subject = `chat auto-filter · #${room}`;
+    const message = `${s.u}: ${text.slice(0, 300)}\nblocked on send (never posted)`;
+    await env.FORMS.put(`sub:${invTs(ts)}:${crypto.randomUUID().slice(0, 8)}`,
+        JSON.stringify({ type: "report", name: s.u, contact: "", subject, message, ts, status: "new" }),
+        { metadata: { t: "report", n: s.u.slice(0, 30), s: subject, p: message.slice(0, 80), ts, st: "new" } });
+}
+
+async function chatSend(request, env, room) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    if (Number(request.headers.get("content-length") || 0) > 4096) return json({ error: "too large" }, 413);
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const s = a.s;
+    const ip = clientIp(request);
+    if (!s.a && limited("m:" + ip, 1500, 25)) return json({ error: "slow down" }, 429);
+
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+    const rec = await getRoom(env, room);
+    if (!rec) return json({ error: "no such room" }, 404);
+    const denied = await roomGate(request, env, rec, s);
+    if (denied) return denied;
+
+    // "can you unmute me?" — allowed while muted (not while banned), once a minute
+    if (body?.unmuteRequest) {
+        const ih = await ipHash(ip, env);
+        const ban = await banOf(env, s.u, ih, s.d);
+        if (ban) return banError(ban);
+        if (!(await env.FORMS.get("mute:d:" + s.d, "json"))) return json({ error: "you're not muted" }, 400);
+        if (limited("um:" + s.d, 60000, 1)) return json({ error: "wait a minute before asking again" }, 429);
+        return storeMessage(env, room, { n: s.u, t: "can you unmute me?", u: 1 }, { ih, dh: s.d });
+    }
+
+    const text = clean(body?.text, TEXT_MAX).replace(/\s+/g, " ");
+    let f;
+    if (body?.attachment?.id) {
+        const fid = String(body.attachment.id);
+        if (!/^\d{13}-[0-9a-f]{6}$/.test(fid)) return json({ error: "bad attachment" }, 400);
+        const l = await env.FORMS.list({ prefix: "file:" + fid, limit: 1 }); // metadata only, doesn't read the bytes
+        const fm = l.keys[0]?.metadata;
+        if (!fm || fm.dh !== s.d || fm.room !== room) return json({ error: "attachment expired, upload it again" }, 400);
+        f = { id: fid, name: fm.name, type: fm.type, size: fm.size };
+    }
+    if (!text && !f) return json({ error: "invalid message" }, 400);
+    if (!s.a && text && (blockedWord(text) || hasLink(text))) {
+        await autoReport(env, room, s, text);
+        return json({ error: RULES_MSG, filtered: true }, 400);
+    }
+
+    const g = await sendGuard(env, s, ip);
+    if (g.res) return g.res;
+
+    // reply: take the quoted text from the server copy so it can't be forged
+    let rp;
+    const rid = String(body?.replyTo?.id || "");
+    if (validMsgId(rid)) {
+        const q = await env.FORMS.get(`msg:${room}:${rid}`, "json");
+        if (q) rp = { i: rid, n: q.n, t: (q.t || (q.f ? "[file] " + q.f.name : "")).slice(0, 40) };
+    }
+    const res = await storeMessage(env, room, { n: s.u, t: text, ...(f ? { f } : {}), ...(rp ? { rp } : {}), ...(s.a ? { a: 1 } : {}) }, { ih: g.ih, dh: s.d });
+    if (res.ok) await touchRoom(env, room, rec);
+    return res;
+}
+
+async function chatOneMessage(request, env, room, id) {
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const rec = await getRoom(env, room);
+    if (!rec) return json({ error: "no such room" }, 404);
+    const denied = await roomGate(request, env, rec, a.s);
+    if (denied) return denied;
+    const v = await env.FORMS.get(`msg:${room}:${id}`, "json");
+    if (!v) return json({ error: "message not found" }, 404);
+    return json({ text: v.t, history: v.eh || [] }); // [{t, at}] oldest first
+}
+
+async function chatEdit(request, env, room, id) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const s = a.s;
+    if (limited("e:" + clientIp(request), 1000, 30)) return json({ error: "slow down" }, 429);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+    const text = clean(body?.text, TEXT_MAX).replace(/\s+/g, " ");
+    if (!text) return json({ error: "invalid message" }, 400);
+
+    const rec = await getRoom(env, room);
+    if (!rec) return json({ error: "no such room" }, 404);
+    const denied = await roomGate(request, env, rec, s);
+    if (denied) return denied;
+    const key = `msg:${room}:${id}`;
+    const v = await env.FORMS.get(key, "json");
+    if (!v) return json({ error: "message not found" }, 404);
+    if (v.n !== s.u || v.dh !== s.d) return json({ error: "not your message" }, 403);
+    if (v.u) return json({ error: "can't edit this" }, 400);
+    if (!s.a && (blockedWord(text) || hasLink(text))) {
+        await autoReport(env, room, s, text);
+        return json({ error: RULES_MSG, filtered: true }, 400);
+    }
+    const g = await sendGuard(env, s, clientIp(request));
+    if (g.res) return g.res;
+
+    v.eh = [...(v.eh || []), { t: v.t, at: Date.now() }].slice(-10);
+    v.t = text; v.e = 1; v.et = Date.now();
+    const meta = metaOf(v);
+    if (bytes(meta) > 980) return json({ error: "message too long (emoji and non-english letters count extra)" }, 400);
+    await env.FORMS.put(key, JSON.stringify(v), { metadata: meta, expirationTtl: CHAT_TTL });
+    return json({ ok: true });
+}
+
+async function chatDeleteMessage(request, env, room, id) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const s = a.s;
+    const key = `msg:${room}:${id}`;
+    const v = await env.FORMS.get(key, "json");
+    if (!v) return json({ error: "message not found" }, 404);
+    const own = v.n === s.u && v.dh === s.d;
+    if (!own && !(s.a && !v.a)) return json({ error: "not your message" }, 403); // staff can delete others, but not other staff
+    if (v.f?.id) await env.FORMS.delete("file:" + v.f.id);
+    await env.FORMS.delete(key);
+    return json({ ok: true });
+}
+
+/* ---------- files ---------- */
+async function chatUpload(request, env, url) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    const s = a.s;
+    const ip = clientIp(request);
+    if (!s.a && limited("u:" + ip, 20000, 3)) return json({ error: "slow down" }, 429);
+
+    const len = Number(request.headers.get("content-length") || 0);
+    if (!len) return json({ error: "empty file" }, 411);
+    if (len > FILE_MAX) return json({ error: "file too big (5mb max)" }, 413);
+    const type = (request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!FILE_TYPES.has(type)) return json({ error: "file type not allowed" }, 415);
+
+    const room = url.searchParams.get("room") || "general";
+    if (!validRoom(room)) return json({ error: "bad room" }, 400);
+    const name = clean(url.searchParams.get("name"), 60).replace(/[\\/"<>:*?|]/g, "_") || "file";
+    if (!s.a && blockedWord(name.replace(/[._-]+/g, " "))) return json({ error: "blocked file name" }, 400);
+
+    const rec = await getRoom(env, room);
+    if (!rec) return json({ error: "no such room" }, 404);
+    const denied = await roomGate(request, env, rec, s);
+    if (denied) return denied;
+    const g = await sendGuard(env, s, ip);
+    if (g.res) return g.res;
+
+    const buf = await request.arrayBuffer();
+    if (!buf.byteLength || buf.byteLength > FILE_MAX) return json({ error: "file too big (5mb max)" }, 413);
+
+    const ts = Date.now();
+    const fid = `${invTs(ts)}-${rand6()}`;
+    await env.FORMS.put("file:" + fid, buf, { metadata: { name, type, size: buf.byteLength, ts, room, dh: s.d }, expirationTtl: CHAT_TTL });
+    // keep only the newest FILE_KEEP files, site-wide
+    const l = await env.FORMS.list({ prefix: "file:", limit: FILE_KEEP + 10 });
+    await Promise.all(l.keys.slice(FILE_KEEP).map((k) => env.FORMS.delete(k.name)));
+    return json({ ok: true, id: fid, name, type, size: buf.byteLength });
+}
+
+async function chatFile(request, env, fid) {
+    if (!/^\d{13}-[0-9a-f]{6}$/.test(fid)) return json({ error: "not found" }, 404);
+    const { value, metadata } = await env.FORMS.getWithMetadata("file:" + fid, "arrayBuffer");
+    if (!value || !metadata) return json({ error: "file expired" }, 404);
+
+    // files in private / admin-only rooms need the same access as the room (page fetches them with headers)
+    const a = await sess(request, env);
+    if (a.bad) return json({ error: "session expired", auth: true }, 401);
+    const rec = await getRoom(env, metadata.room || "general");
+    if (!rec) return json({ error: "file expired" }, 404);
+    if (rec.ph || rec.ao) {
+        const denied = await roomGate(request, env, rec, a.s);
+        if (denied) return denied;
+    }
+    const inline = metadata.type.startsWith("image/");
+    return new Response(value, {
+        headers: {
+            "content-type": metadata.type,
+            // only images render inline; everything else downloads. nosniff + sandbox CSP keep uploads inert.
+            "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(metadata.name)}`,
+            "x-content-type-options": "nosniff",
+            "content-security-policy": "default-src 'none'; sandbox",
+            "cache-control": rec.ph || rec.ao ? "no-store" : "private, max-age=300",
+        },
+    });
+}
+
+/* ---------- reports ---------- */
+async function chatReport(request, env) {
+    const bad = sameOrigin(request); if (bad !== true) return bad;
+    const a = await sess(request, env);
+    const no = needSession(a); if (no) return no;
+    if (limited("rp:" + clientIp(request), 10000, 5)) return json({ error: "slow down" }, 429);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+    const room = clean(body?.room, 24);
+    const id = clean(body?.id, 30);
+    if (!validRoom(room) || !validMsgId(id)) return json({ error: "bad message" }, 400);
+    const m = await env.FORMS.get(`msg:${room}:${id}`, "json");
+    if (!m) return json({ error: "message is gone" }, 404);
+
+    const reason = clean(body?.reason, 80);
+    const details = clean(body?.details, 500);
+    const ts = Date.now();
+    const subject = `chat report · #${room}`;
+    const message =
+        `${m.n}: ${m.t || "[file] " + (m.f?.name || "")}\nmessage: ${room}/${id}\nreported by: ${a.s.u}\nreason: ${reason || "(none)"}${details ? "\ndetails: " + details : ""}`;
+    await env.FORMS.put(`sub:${invTs(ts)}:${crypto.randomUUID().slice(0, 8)}`,
+        JSON.stringify({ type: "report", name: m.n, contact: "", subject, message, ts, status: "new" }),
+        { metadata: { t: "report", n: m.n.slice(0, 30), s: subject, p: message.slice(0, 80), ts, st: "new" } });
+    return json({ ok: true });
+}
+
+/* ---------- router ---------- */
+async function globalChat(request, env, url) {
+    const p = url.pathname.split("/").filter(Boolean).slice(2).map(decodeURIComponent); // after ["api","global"]
+    const m = request.method;
+
+    if (p[0] === "gate" && m === "GET") return chatGate(request, env, url);
+    if (p[0] === "login" && m === "POST") return chatLogin(request, env);
+    if (p[0] === "renew" && m === "POST") return chatRenew(request, env);
+
+    if (p[0] === "rooms") {
+        if (!p[1]) {
+            if (m === "GET") return chatRooms(request, env);
+            if (m === "POST") return chatCreateRoom(request, env);
+        } else if (!validRoom(p[1])) {
+            return json({ error: "bad room" }, 400);
+        } else if (!p[2]) {
+            if (m === "PATCH") return chatEditRoom(request, env, p[1]);
+            if (m === "DELETE") return chatDeleteRoom(request, env, p[1]);
+        } else if (p[2] === "join" && m === "POST") {
+            return chatJoin(request, env, p[1]);
+        } else if (p[2] === "messages") {
+            if (!p[3]) {
+                if (m === "GET") return chatMessages(request, env, p[1], url);
+                if (m === "POST") return chatSend(request, env, p[1]);
+            } else if (validMsgId(p[3])) {
+                if (m === "GET") return chatOneMessage(request, env, p[1], p[3]);
+                if (m === "PATCH") return chatEdit(request, env, p[1], p[3]);
+                if (m === "DELETE") return chatDeleteMessage(request, env, p[1], p[3]);
+            }
+        }
+    }
+    if (p[0] === "upload" && m === "POST") return chatUpload(request, env, url);
+    if (p[0] === "file" && p[1] && m === "GET") return chatFile(request, env, p[1]);
+    if (p[0] === "report" && m === "POST") return chatReport(request, env);
+
+    if (p[0] === "mod") {
+        const a = await sess(request, env);
+        const no = needSession(a); if (no) return no;
+        if (!a.s.a) return json({ error: "not authorized" }, 403);
+        if (m !== "GET") { const bad = sameOrigin(request); if (bad !== true) return bad; }
+        return chatMod(request, env, a.s, p.slice(1));
+    }
+    return json({ error: "not found" }, 404);
+}
+
+/* ---------- moderation (staff only) ----------
+   Called from /api/global/mod/... (staff session) and /api/admin/global/... (ADMIN_TOKEN, for curl).
+   POST   mute     {room,id,minutes,reason}   mute that message's author's device (minutes 0 = permanent)
+   POST   unmute   {room,id}
+   POST   ban      {room,id,type:"username"|"ip"|"device",minutes,reason}
+   POST   unban    {room,id,type}
+   GET    mutes    GET bans
+   DELETE rooms/<id>?wipe=1                   empty a room (without ?wipe the room is removed too) */
+async function chatMod(request, env, s, p) {
+    const what = p[0], m = request.method;
+
+    if (what === "mutes" && m === "GET") {
+        const l = await env.FORMS.list({ prefix: "mute:", limit: 200 });
+        return json({ items: l.keys.map((k) => ({ key: k.name, ...k.metadata })) });
+    }
+    if (what === "bans" && m === "GET") {
+        const l = await env.FORMS.list({ prefix: "ban:", limit: 200 });
+        return json({ items: l.keys.map((k) => ({ key: k.name, ...k.metadata })) });
+    }
+
+    if (what === "rooms" && m === "DELETE") {
+        const room = p[1];
+        if (!validRoom(room || "")) return json({ error: "bad room" }, 400);
+        await wipeRoomMessages(env, room);
+        if (room !== "general" && !new URL(request.url).searchParams.has("wipe")) await env.FORMS.delete("room:" + room);
+        return json({ ok: true });
+    }
+
+    if (["mute", "unmute", "ban", "unban"].includes(what) && m === "POST") {
+        let body;
+        try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+        const room = clean(body?.room, 24), id = clean(body?.id, 30);
+        if (!validRoom(room) || !validMsgId(id)) return json({ error: "pick a message" }, 400);
+        const v = await env.FORMS.get(`msg:${room}:${id}`, "json");
+        if (!v) return json({ error: "message not found" }, 404);
+        if (v.a) return json({ error: `can't ${what} an admin` }, 400);
+
+        const minutes = Math.max(0, Math.floor(Number(body?.minutes) || 0)); // 0 = permanent
+        const reason = clean(body?.reason, 80);
+        const until = minutes ? Date.now() + minutes * 60000 : 0;
+        const opts = (extra) => ({ metadata: { user: v.n, reason, until, by: s.u, ...extra }, ...(minutes ? { expirationTtl: Math.max(60, minutes * 60) } : {}) });
+        const rec = JSON.stringify({ reason, until, by: s.u, user: v.n });
+
+        if (what === "mute") { await env.FORMS.put("mute:d:" + v.dh, rec, opts()); return json({ ok: true }); }
+        if (what === "unmute") { await env.FORMS.delete("mute:d:" + v.dh); return json({ ok: true }); }
+
+        const type = body?.type;
+        const key = type === "ip" ? "ban:i:" + v.ih : type === "device" ? "ban:d:" + v.dh : type === "username" ? "ban:u:" + v.n.toLowerCase() : "";
+        if (!key) return json({ error: "bad ban type" }, 400);
+        if (what === "ban") await env.FORMS.put(key, rec, opts({ type }));
+        else await env.FORMS.delete(key);
+        return json({ ok: true });
+    }
+    return json({ error: "not found" }, 404);
+}
+const adminGlobal = (request, env, parts) =>
+    chatMod(request, env, { u: "admin", a: true }, parts.slice(3)); // parts = ["api","admin","global",...]
+
 /* ───────── router ───────── */
 export default {
     async fetch(request, env) {
@@ -218,6 +939,7 @@ export default {
                 }
                 if (url.pathname.startsWith("/api/admin/")) return await admin(request, env, url);
                 if (url.pathname === "/api/chat") return await ai(request, env);
+                if (url.pathname.startsWith("/api/global/")) return await globalChat(request, env, url);
                 return json({ error: "not found" }, 404);
             } catch (e) {
                 console.error(e);

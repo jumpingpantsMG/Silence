@@ -416,6 +416,23 @@
             let token = 0, gen = 0, current = null, pageTitle = "silence";
             window.currentpage = CONFIG.home;  // for the shell to know which page is showing
             window.checkforupdates = checkForUpdates;
+            const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+            // Initial state on load
+            window.isDarkMode = darkModeMediaQuery.matches;
+
+            // Keep the state synced and re-apply settings in real-time
+            darkModeMediaQuery.addEventListener('change', (event) => {
+                window.isDarkMode = event.matches;
+
+                // Force the icon logic to re-run immediately when the system theme shifts
+                if (typeof apply === 'function') {
+                    apply();
+                }
+            });
+
+
+
 
             const SANDBOX = "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock allow-modals allow-downloads allow-orientation-lock";
             const ALLOW = "fullscreen; gamepad; autoplay; clipboard-write; accelerometer; gyroscope";
@@ -516,7 +533,15 @@
                 }
                 const disguised = document.body.classList.contains("locked");
                 document.title = disguised ? DEFAULTS.title : (s.title.trim() || pageTitle);
-                $("#icon").href = disguised ? ICONS.tempotype : iconHref(s);
+                let possibleICON = disguised ? ICONS.tempotype : iconHref(s);
+                // A safer, case-insensitive way to check the current icon name
+                console.log("Current icon:", s.icon, "Dark mode:", window.isDarkMode);
+
+                if (s.icon !== "custom" && window.isDarkMode) {
+                    possibleICON = "/Silence-logo.png"; // Matches your capitalized file scheme
+                }
+
+                $("#icon").href = possibleICON;
                 document.body.classList.toggle("panicbtn", s.panicBtn);
             }
             // upload: shrink to a 64x64 PNG so it stays small in localStorage

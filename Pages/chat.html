@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>silence · chat</title>
+    <meta name="theme-color" content="#08080a">
+    <link rel="stylesheet" href="../style.css">
+    <link rel="icon" href="../Silence-logo.png" type="image/png">
+    <script src="../js/Navbar.js"></script>
+    <style>
+        .gc {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .gc[hidden] {
+            display: none;
+        }
+
+        .gc-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .gc-row.sp {
+            justify-content: space-between;
+        }
+
+        .gc-in,
+        .gc select,
+        .gc textarea,
+        .gc-dlg input,
+        .gc-dlg select,
+        .gc-dlg textarea {
+            background: rgba(255, 255, 255, .05);
+            color: inherit;
+            border: 1px solid rgba(255, 255, 255, .12);
+            border-radius: 8px;
+            padding: 7px 10px;
+            font: inherit;
+            max-width: 100%;
+        }
+
+        .gc-in {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .gc-err {
+            color: #ff6b6b;
+            margin: 0;
+            min-height: 1em;
+            font-size: .9em;
+        }
+
+        .gc-note {
+            font-size: .85em;
+            opacity: .7;
+            margin: 0;
+        }
+
+        .gc-tabs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .gc-tabs button {
+            background: none;
+            border: 0;
+            border-bottom: 2px solid transparent;
+            color: inherit;
+            opacity: .6;
+            padding: 6px 4px;
+            cursor: pointer;
+            font: inherit;
+        }
+
+        .gc-tabs button.on {
+            opacity: 1;
+            border-color: currentColor;
+        }
+
+        .gc-card {
+            border: 1px solid rgba(255, 255, 255, .12);
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .gc-card h3 {
+            margin: 0;
+            font-size: 1em;
+        }
+
+        .gc-badge {
+            border: 1px solid currentColor;
+            border-radius: 4px;
+            padding: 0 5px;
+            font-size: .75em;
+            margin-left: 6px;
+            opacity: .85;
+        }
+
+        .gc-msgs {
+            height: 55vh;
+            min-height: 280px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 4px;
+        }
+
+        .gc-m {
+            max-width: 88%;
+            align-self: flex-start;
+            background: rgba(255, 255, 255, .05);
+            border-radius: 10px;
+            padding: 7px 11px;
+            overflow-wrap: anywhere;
+        }
+
+        .gc-m.me {
+            align-self: flex-end;
+            background: rgba(255, 255, 255, .1);
+        }
+
+        .gc-m.adm {
+            border: 1px solid rgba(255, 255, 255, .35);
+        }
+
+        .gc-m.small {
+            opacity: .6;
+            font-size: .85em;
+        }
+
+        .gc-h {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: baseline;
+            font-size: .8em;
+            opacity: .8;
+        }
+
+        .gc-acts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: .75em;
+            margin-top: 4px;
+            opacity: .7;
+        }
+
+        .gc-acts .linkish,
+        .gc-h .linkish {
+            font-size: 1em;
+        }
+
+        .gc-t {
+            margin: 2px 0 0;
+            white-space: pre-wrap;
+        }
+
+        .gc-rp {
+            border-left: 2px solid rgba(255, 255, 255, .3);
+            padding-left: 8px;
+            margin: 3px 0;
+            font-size: .8em;
+            opacity: .7;
+        }
+
+        .gc-m img {
+            display: block;
+            max-width: 240px;
+            max-height: 240px;
+            border-radius: 8px;
+            margin-top: 4px;
+        }
+
+        .gc-empty {
+            margin: auto;
+            opacity: .6;
+        }
+
+        .gc-bar {
+            background: rgba(255, 255, 255, .05);
+            border-radius: 8px;
+            padding: 6px 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            font-size: .9em;
+        }
+
+        .gc-muted {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: .85em;
+        }
+
+        .gc-muted button {
+            background: rgba(255, 255, 255, .08);
+            border: 0;
+            color: inherit;
+            border-radius: 999px;
+            padding: 3px 10px;
+            cursor: pointer;
+        }
+
+        .gc-dlg {
+            background: #121216;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, .2);
+            border-radius: 12px;
+            padding: 18px;
+            width: min(420px, calc(100vw - 28px));
+        }
+
+        .gc-dlg::backdrop {
+            background: rgba(0, 0, 0, .7);
+        }
+
+        .gc-dlg h3 {
+            margin: 0 0 10px;
+        }
+
+        .gc-dlg label {
+            display: block;
+            font-size: .85em;
+            opacity: .75;
+            margin: 10px 0 4px;
+        }
+
+        .gc-dlg input:not([type=checkbox]),
+        .gc-dlg select,
+        .gc-dlg textarea {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .gc-dlg .gc-row {
+            margin-top: 12px;
+        }
+
+        .gc-hist {
+            border-top: 1px solid rgba(255, 255, 255, .12);
+            padding: 6px 0;
+            overflow-wrap: anywhere;
+        }
+
+        .gc-hist small {
+            opacity: .6;
+            display: block;
+        }
+
+        /* message popups */
+        #pops {
+            position: fixed;
+            top: 70px;
+            right: 14px;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: min(320px, calc(100vw - 28px));
+            pointer-events: none;
+        }
+
+        .pop {
+            pointer-events: auto;
+            cursor: pointer;
+            background: #17171c;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, .18);
+            border-radius: 12px;
+            padding: 9px 12px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, .5);
+            animation: popin .18s ease-out;
+            overflow-wrap: anywhere;
+        }
+
+        .pop b {
+            display: block;
+            font-size: .8em;
+            opacity: .75;
+        }
+
+        .pop span {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        @keyframes popin {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="wrap stack">
+        <section class="head">
+            <h1>chat</h1>
+            <p>global, free, no account. no links, be kind. files up to 5mb (newest 10 are kept).</p>
+        </section>
+
+        <!-- 1. gate -->
+        <section class="panel gc" id="gate">
+            <label class="gc-note" for="g-user">pick a username (staff will be asked for a password)</label>
+            <div class="gc-row">
+                <input class="gc-in" id="g-user" maxlength="32" placeholder="username" autocomplete="off">
+                <button class="btn primary" id="g-go" type="button">continue</button>
+            </div>
+            <div id="g-pwbox" hidden>
+                <label class="gc-note" for="g-pw">password</label>
+                <div class="gc-row">
+                    <input class="gc-in" id="g-pw" type="password" autocomplete="current-password"
+                        placeholder="password">
+                    <button class="btn primary" id="g-login" type="button">sign in</button>
+                </div>
+            </div>
+            <p class="gc-err" id="g-err"></p>
+        </section>
+
+        <!-- 2. lobby -->
+        <section class="panel gc" id="lobby" hidden>
+            <div class="gc-row sp">
+                <span id="l-who"></span>
+                <button class="linkish" id="l-out" type="button">sign out</button>
+            </div>
+            <div class="gc-tabs">
+                <button class="on" data-tab="global" type="button">global chat</button>
+                <button data-tab="rooms" type="button">rooms</button>
+            </div>
+            <div id="l-global" class="gc">
+                <p class="gc-note">the main chat. everyone can see and join.</p>
+                <button class="btn primary" id="l-enter" type="button">enter global chat →</button>
+            </div>
+            <div id="l-rooms" class="gc" hidden>
+                <div class="gc-row sp">
+                    <span class="gc-note">join or create a room</span>
+                    <button class="btn" id="l-new" type="button">+ create room</button>
+                </div>
+                <div id="l-list" class="gc"></div>
+            </div>
+        </section>
+
+        <!-- 3. chat -->
+        <section class="panel gc" id="chat" hidden>
+            <div class="gc-bar">
+                <b id="c-name"></b>
+                <span class="gc-row">
+                    <button class="linkish" id="c-share" type="button" hidden>share link</button>
+                    <button class="linkish" id="c-edit" type="button" hidden>edit</button>
+                    <button class="linkish" id="c-del" type="button" hidden>delete room</button>
+                    <button class="linkish" id="c-wipe" type="button" hidden>wipe messages</button>
+                    <button class="linkish" id="c-alerts" type="button">alerts: popups</button>
+                    <button class="linkish" id="c-muted" type="button" hidden>muted (0)</button>
+                    <button class="linkish" id="c-back" type="button">← lobby</button>
+                </span>
+            </div>
+            <div class="gc-muted" id="c-mutedlist" hidden></div>
+            <div class="gc-msgs" id="msgs" aria-live="polite"></div>
+            <div class="gc-bar" id="c-reply" hidden><span id="c-reply-t"></span><button class="linkish" id="c-reply-x"
+                    type="button">cancel</button></div>
+            <div class="gc-bar" id="c-unmute" hidden><span>you're muted.</span><button class="btn" id="c-unmute-b"
+                    type="button">ask to be unmuted</button></div>
+            <form class="gc-row" id="f" autocomplete="off">
+                <button class="btn" id="attach" type="button" title="send a file (5mb max)">file</button>
+                <input type="file" id="file" hidden
+                    accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,application/zip,audio/mpeg,video/mp4,video/webm">
+                <input class="gc-in" id="q" maxlength="300" placeholder="message…">
+                <button class="btn primary" id="send" type="submit">send</button>
+            </form>
+            <p class="gc-note" id="c-status" role="status"></p>
+        </section>
+    </main>
+
+    <footer>
+        <div class="wrap"><span>silence</span><span>everyone can read this</span></div>
+    </footer>
+    <div id="pops" aria-live="polite"></div>
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+        (() => {
+            const API = "/api/global";
+            const POLL = 5000;
+            const MAX_FILE = 5 * 1024 * 1024;
+            const IDLE_MS = 10 * 60 * 1000;          // stop polling after 10 min of no activity (saves server reads)
+            const RULES = "that message breaks the chat rules. it was sent to moderators for review. repeated violations can get you banned.";
+
+            const $ = s => document.querySelector(s);
+            const load = (k, d, st = localStorage) => { try { return JSON.parse(st.getItem(k)) ?? d; } catch { return d; } };
+            const store = (k, v, st = localStorage) => { try { st.setItem(k, JSON.stringify(v)); } catch { } };
+            const h = (tag, props = {}, ...kids) => {
+                const e = document.createElement(tag);
+                for (const [k, v] of Object.entries(props)) {
+                    if (k === "class") e.className = v;
+                    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+                    else if (v !== false && v != null) e.setAttribute(k, v === true ? "" : v);
+                }
+                e.append(...kids.flat().filter(x => x != null && x !== false));
+                return e;
+            };
+
+            /* ── state ── */
+            let deviceId = load("silence:deviceId", "");
+            if (!deviceId) { deviceId = crypto.randomUUID(); store("silence:deviceId", deviceId); }
+            let token = load("silence:chatToken", "", sessionStorage);
+            let user = load("silence:chatUser", "", sessionStorage);
+            let isAdmin = load("silence:chatAdmin", false, sessionStorage);
+            let alerts = load("silence:chatAlerts", "popups");           // off | popups | system
+            const passes = load("silence:roomPass", {}, sessionStorage);  // private-room passwords, this tab only
+            let hidden = new Set(load("silence:chatHidden", []));         // messages hidden after a report
+            let muted = new Set(load("silence:chatMuted", []));           // users muted in this browser
+            const revealed = new Set();
+            let adminMuted = new Set();                                   // staff only: usernames muted site-wide
+            let rooms = [], room = null;                                  // room = {id,name,d,by,pw,ao}
+            let items = [], v = "", seen = null, fails = 0, busy = false, again = false, timer = null, idleTimer = null;
+            let replyTo = null, pending = null, selfMuted = false;
+            let sendTimes = [], cooldownUntil = 0;
+            const sub = new URLSearchParams(location.search).get("room");
+            let pendingRoom = sub && /^[a-z0-9-]{2,24}$/.test(sub) ? sub : null;
+
+            let tt;
+            function toast(msg, bad) {
+                const el = $("#toast");
+                el.textContent = msg; el.classList.toggle("err", !!bad); el.classList.add("show");
+                clearTimeout(tt); tt = setTimeout(() => el.classList.remove("show"), 3200);
+            }
+
+            async function api(path, opts = {}) {
+                const headers = { ...(opts.headers || {}) };
+                if (token) headers.authorization = "Bearer " + token;
+                if (room && passes[room.id] && /\/(rooms\/[a-z0-9-]+\/messages|upload|file)/.test(path)) headers["x-room-pass"] = encodeURIComponent(passes[room.id]);
+                const res = await fetch(API + path, { ...opts, headers });
+                let d = {};
+                try { d = await res.json(); } catch { }
+                if (!res.ok) {
+                    const e = new Error(d.error || "error " + res.status);
+                    Object.assign(e, { status: res.status, pw: !!d.pw, auth: !!d.auth, muted: !!d.muted, banned: !!d.banned, filtered: !!d.filtered });
+                    if (e.auth && token) signOut("your session ended, sign in again");
+                    throw e;
+                }
+                return d;
+            }
+            const send_ = (method, path, body) => api(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
+            const post = (path, body) => send_("POST", path, body);
+
+            /* ── views ── */
+            function show(view) {
+                for (const id of ["gate", "lobby", "chat"]) $("#" + id).hidden = id !== view;
+                if (view !== "chat") { clearTimeout(timer); clearTimeout(idleTimer); }
+            }
+
+            /* ── dialogs ── */
+            function dialog(title, content, actions) {
+                const d = h("dialog", { class: "gc-dlg" });
+                const err = h("p", { class: "gc-err" });
+                const close = () => { d.close(); d.remove(); };
+                d.append(h("h3", {}, title), ...content, err, h("div", { class: "gc-row" }, actions.map(a =>
+                    h("button", {
+                        class: "btn" + (a.primary ? " primary" : ""), type: "button",
+                        onclick: async () => { err.textContent = ""; try { await a.fn(close); } catch (e) { err.textContent = e.message; } },
+                    }, a.label))));
+                d.addEventListener("close", () => d.remove());
+                document.body.append(d); d.showModal();
+                return { close, d };
+            }
+            const cancel = { label: "cancel", fn: c => c() };
+            const field = (label, el) => [h("label", {}, label), el];
+            const DURATIONS = [["1 hour", 60], ["24 hours", 1440], ["7 days", 10080], ["permanent", 0]];
+            const durSelect = () => h("select", {}, DURATIONS.map(([t, m]) => h("option", { value: m }, t)));
+
+            /* ── 1. gate ── */
+            const gErr = t => { $("#g-err").textContent = t || ""; };
+            async function gateContinue() {
+                gErr();
+                const u = $("#g-user").value.trim();
+                if (!u) return gErr("please enter a username.");
+                try {
+                    const d = await api(`/gate?username=${encodeURIComponent(u)}&device=${deviceId}`);
+                    if (d.needsPassword) { $("#g-pwbox").hidden = false; $("#g-pw").focus(); }
+                    else await login(u, "");
+                } catch (e) { gErr(e.message); }
+            }
+            async function login(u, pw) {
+                try {
+                    const d = await post("/login", { username: u, password: pw, deviceId });
+                    token = d.token; user = d.username; isAdmin = !!d.isAdmin;
+                    store("silence:chatToken", token, sessionStorage); store("silence:chatUser", user, sessionStorage); store("silence:chatAdmin", isAdmin, sessionStorage);
+                    $("#g-pw").value = ""; $("#g-pwbox").hidden = true;
+                    await afterLogin();
+                } catch (e) { gErr(e.message); }
+            }
+            $("#g-go").onclick = gateContinue;
+            $("#g-user").onkeydown = e => { if (e.key === "Enter") gateContinue(); };
+            $("#g-login").onclick = () => login($("#g-user").value.trim(), $("#g-pw").value);
+            $("#g-pw").onkeydown = e => { if (e.key === "Enter") $("#g-login").click(); };
+            $("#g-user").oninput = () => { $("#g-pwbox").hidden = true; };
+
+            function signOut(msg) {
+                token = ""; user = ""; isAdmin = false; room = null; items = []; v = ""; replyTo = null; pending = null;
+                for (const k of ["silence:chatToken", "silence:chatUser", "silence:chatAdmin"]) try { sessionStorage.removeItem(k); } catch { }
+                show("gate"); gErr(msg || "");
+            }
+
+            async function afterLogin() {
+                if (pendingRoom) {            // opened from a share link
+                    const id = pendingRoom; pendingRoom = null;
+                    history.replaceState(null, "", location.pathname);
+                    try {
+                        const d = await api("/rooms");
+                        const r = d.rooms.find(x => x.id === id);
+                        if (r) return joinRoom(r);
+                        toast("that room no longer exists or you don't have access", true);
+                    } catch { }
+                }
+                showLobby();
+            }
+
+            /* ── 2. lobby ── */
+            function showLobby() {
+                room = null; clearTimeout(timer);
+                show("lobby");
+                $("#l-who").replaceChildren("signed in as ", h("b", {}, user), isAdmin ? h("span", { class: "gc-badge" }, "admin") : "");
+                loadRooms();
+            }
+            $("#l-out").onclick = () => signOut();
+            document.querySelectorAll(".gc-tabs button").forEach(b => b.onclick = () => {
+                document.querySelectorAll(".gc-tabs button").forEach(x => x.classList.toggle("on", x === b));
+                $("#l-global").hidden = b.dataset.tab !== "global";
+                $("#l-rooms").hidden = b.dataset.tab !== "rooms";
+                if (b.dataset.tab === "rooms") loadRooms();
+            });
+            $("#l-enter").onclick = () => joinRoom({ id: "general", name: "Global Chat", d: "" });
+
+            async function loadRooms() {
+                try {
+                    const d = await api("/rooms");
+                    rooms = d.rooms;
+                    const list = rooms.filter(r => r.id !== "general");
+                    $("#l-list").replaceChildren(...(list.length ? list.map(r => h("div", { class: "gc-card" },
+                        h("h3", {}, r.name, r.pw ? h("span", { class: "gc-badge" }, "private") : "", r.ao ? h("span", { class: "gc-badge" }, "admin") : ""),
+                        r.d ? h("p", { class: "gc-note" }, r.d) : "",
+                        h("p", { class: "gc-note" }, `by ${r.by} · active ${new Date(r.la || r.ts).toLocaleDateString()}`),
+                        h("button", { class: "btn", type: "button", onclick: () => joinRoom(r) }, "join →"))) : [h("p", { class: "gc-note" }, "no rooms yet. create one!")]));
+                } catch (e) { if (!e.auth) toast(e.message, true); }
+            }
+
+            $("#l-new").onclick = () => {
+                let type = "public";
+                const name = h("input", { maxlength: 50, placeholder: "e.g. gaming lounge" });
+                const desc = h("input", { maxlength: 100, placeholder: "what's this room for?" });
+                const pw = h("input", { type: "password", maxlength: 40, placeholder: "room password", autocomplete: "new-password" });
+                const pwBox = h("div", { hidden: true }, field("password *", pw));
+                const types = [["public", "public"], ["private", "private"], ...(isAdmin ? [["admin", "admin only"]] : [])];
+                const btns = types.map(([k, t]) => h("button", {
+                    class: "btn" + (k === type ? " primary" : ""), type: "button",
+                    onclick: e => { type = k; btns.forEach(b => b.classList.remove("primary")); e.currentTarget.classList.add("primary"); pwBox.hidden = k !== "private"; },
+                }, t));
+                dialog("create room", [
+                    ...field("room name *", name), ...field("description (optional)", desc),
+                    ...field("room type", h("div", { class: "gc-row" }, btns)), pwBox,
+                ], [{
+                    label: "create →", primary: true, fn: async close => {
+                        if (!name.value.trim()) throw new Error("room name is required.");
+                        if (type === "private" && !pw.value.trim()) throw new Error("password is required for private rooms.");
+                        const d = await post("/rooms", { name: name.value, description: desc.value, isPrivate: type === "private", password: type === "private" ? pw.value : "", adminOnly: type === "admin" });
+                        if (type === "private") { passes[d.room.id] = pw.value; store("silence:roomPass", passes, sessionStorage); }
+                        close(); joinRoom(d.room);
+                    },
+                }, cancel]);
+            };
+
+            async function joinRoom(r) {
+                let pw = "";
+                if (r.pw && !isAdmin && !passes[r.id]) {
+                    const input = h("input", { type: "password", maxlength: 40, placeholder: "password" });
+                    pw = await new Promise(res => {
+                        const dlg = dialog(`"${r.name}" is private`, field("enter password", input), [
+                            { label: "join", primary: true, fn: c => { c(); res(input.value); } },
+                            { label: "cancel", fn: c => { c(); res(null); } },
+                        ]);
+                        dlg.d.addEventListener("close", () => res(null), { once: true });
+                    });
+                    if (pw === null || pw === "") return;
+                }
+                try {
+                    const useRoom = { ...r }; room = useRoom;
+                    if (pw) passes[r.id] = pw;
+                    const d = await post(`/rooms/${r.id}/join`, { password: passes[r.id] || pw });
+                    if (pw) store("silence:roomPass", passes, sessionStorage);
+                    room = { ...r, ...d.room, pw: r.pw, ao: r.ao };
+                    enterChat();
+                } catch (e) {
+                    room = null; delete passes[r.id];
+                    toast(e.message, true);
+                }
+            }
+
+            /* ── 3. chat ── */
+            const isOwner = () => room && room.id !== "general" && room.by === user;
+            function enterChat() {
+                show("chat");
+                items = []; v = ""; seen = null; replyTo = null; pending = null; fails = 0;
+                $("#c-name").textContent = room.id === "general" ? "global chat" : room.name;
+                $("#c-share").hidden = room.id === "general";
+                $("#c-edit").hidden = $("#c-del").hidden = !(room.id !== "general" && (isAdmin || isOwner()));
+                $("#c-wipe").hidden = !isAdmin;
+                $("#c-reply").hidden = true; $("#c-unmute").hidden = true; $("#c-status").textContent = "";
+                $("#q").disabled = false; $("#q").value = "";
+                paintMuted(); render(); poll(true); resetIdle();
+                if (isAdmin) loadAdminMutes();
+            }
+            $("#c-back").onclick = () => { showLobby(); };
+            $("#c-share").onclick = async () => {
+                const link = `${location.origin}${location.pathname}?room=${encodeURIComponent(room.id)}`;
+                try { await navigator.clipboard.writeText(link); toast("link copied"); } catch { prompt("copy this link", link); }
+            };
+            $("#c-del").onclick = async () => {
+                if (!confirm(`delete room "${room.name}" and all its messages?`)) return;
+                try { await send_("DELETE", `/rooms/${room.id}`); toast("room deleted"); showLobby(); } catch (e) { toast(e.message, true); }
+            };
+            $("#c-wipe").onclick = async () => {
+                if (!confirm(`delete every message in "${room.name}"?`)) return;
+                try { await send_("DELETE", `/mod/rooms/${room.id}?wipe=1`); toast("wiped"); poll(true); } catch (e) { toast(e.message, true); }
+            };
+            $("#c-edit").onclick = () => {
+                const name = h("input", { maxlength: 50, value: room.name });
+                const desc = h("input", { maxlength: 100, value: room.d || "" });
+                const priv = h("input", { type: "checkbox", ...(room.pw ? { checked: true } : {}) });
+                const pw = h("input", { type: "password", maxlength: 40, placeholder: room.pw ? "leave empty to keep the current password" : "new password", autocomplete: "new-password" });
+                const ao = h("input", { type: "checkbox", ...(room.ao ? { checked: true } : {}) });
+                dialog("edit room", [
+                    ...field("room name", name), ...field("description", desc),
+                    h("label", {}, priv, " private (needs a password)"), pw,
+                    isAdmin ? h("label", {}, ao, " admin only (hidden from everyone else)") : "",
+                ], [{
+                    label: "save →", primary: true, fn: async close => {
+                        const body = { name: name.value, description: desc.value, isPrivate: priv.checked, password: pw.value };
+                        if (isAdmin) body.adminOnly = ao.checked;
+                        const d = await send_("PATCH", `/rooms/${room.id}`, body);
+                        if (pw.value) { passes[room.id] = pw.value; store("silence:roomPass", passes, sessionStorage); }
+                        room = { ...room, ...d.room }; $("#c-name").textContent = room.name; close(); toast("saved");
+                    },
+                }, cancel]);
+            };
+
+            /* local mute list */
+            function paintMuted() {
+                const b = $("#c-muted"), list = $("#c-mutedlist");
+                b.hidden = muted.size === 0; b.textContent = `muted (${muted.size})`;
+                if (!muted.size) list.hidden = true;
+                list.replaceChildren(...[...muted].map(n => h("button", { title: "unmute", onclick: () => { muteUser(n, false); } }, n + "  ×")));
+            }
+            $("#c-muted").onclick = () => { $("#c-mutedlist").hidden = !$("#c-mutedlist").hidden; };
+            function muteUser(name, on) {
+                const k = name.trim().toLowerCase();
+                on ? muted.add(k) : muted.delete(k);
+                store("silence:chatMuted", [...muted].slice(-500)); paintMuted(); render();
+            }
+
+            async function loadAdminMutes() {
+                try { adminMuted = new Set((await api("/mod/mutes")).items.map(i => String(i.user || "").toLowerCase())); render(); } catch { }
+            }
+
+            /* ── rendering (textContent only, nothing a user types can inject html) ── */
+            const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + " mb" : Math.max(1, Math.round(n / 1024)) + " kb";
+            const blobs = new Map();
+            const blobFor = f => {
+                if (!blobs.has(f.id)) blobs.set(f.id, fetch(`${API}/file/${encodeURIComponent(f.id)}`, {
+                    headers: { ...(token ? { authorization: "Bearer " + token } : {}), ...(passes[room?.id] ? { "x-room-pass": encodeURIComponent(passes[room.id]) } : {}) },
+                }).then(async r => { if (!r.ok) throw new Error("gone"); return URL.createObjectURL(await r.blob()); }));
+                return blobs.get(f.id);
+            };
+            function fileEl(f) {
+                const src = `${API}/file/${encodeURIComponent(f.id)}`;
+                const locked = !!(room.pw || room.ao);
+                const wrap = h("div");
+                const expired = () => { wrap.textContent = `${f.name} · file expired`; wrap.style.opacity = .6; };
+                if (f.type.startsWith("image/")) {
+                    const img = h("img", { alt: f.name, loading: "lazy" });
+                    img.onerror = expired;
+                    locked ? blobFor(f).then(u => { img.src = u; }, expired) : (img.src = src);
+                    wrap.append(img);
+                } else {
+                    const a = h("a", { class: "u", rel: "noopener", download: f.name, href: locked ? "#" : src }, `${f.name} (${kb(f.size)})`);
+                    if (locked) a.onclick = async e => { e.preventDefault(); try { const u = await blobFor(f); h("a", { href: u, download: f.name }).click(); } catch { expired(); } };
+                    wrap.append(a);
+                }
+                return wrap;
+            }
+
+            function act(label, fn) { return h("button", { class: "linkish", type: "button", onclick: fn }, label); }
+
+            function render() {
+                const box = $("#msgs");
+                const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+                const els = items.map(m => {
+                    const own = m.n === user;
+                    const mutedHere = !own && !m.a && muted.has(m.n.toLowerCase());
+                    if (!own && !revealed.has(m.id)) {
+                        if (hidden.has(m.id)) return h("div", { class: "gc-m small" }, "you hid this message. ", act("show", () => { revealed.add(m.id); render(); }));
+                        if (mutedHere) return h("div", { class: "gc-m small" }, "muted user · ", act("show", () => { revealed.add(m.id); render(); }), " ", act("unmute", () => muteUser(m.n, false)));
+                    }
+                    const head = h("div", { class: "gc-h" }, h("b", {}, m.n),
+                        m.a ? h("span", { class: "gc-badge" }, "admin") : "",
+                        isAdmin && adminMuted.has(m.n.toLowerCase()) ? h("span", { class: "gc-badge" }, "muted") : "",
+                        m.u ? h("span", { class: "gc-badge" }, "unmute request") : "",
+                        h("span", {}, new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })),
+                        m.e ? h("button", { class: "linkish", type: "button", title: "see edit history", onclick: () => showHistory(m) }, "edited") : "");
+
+                    const acts = h("div", { class: "gc-acts" });
+                    if (m.t) acts.append(act("copy", async () => { try { await navigator.clipboard.writeText(m.t); toast("copied"); } catch { } }));
+                    acts.append(act("reply", () => { replyTo = m; $("#c-reply-t").textContent = `${m.n}: ${(m.t || "[file]").slice(0, 60)}`; $("#c-reply").hidden = false; $("#q").focus(); }));
+                    if (!own) acts.append(act("report", () => reportDialog(m)));
+                    if (!own && !m.a) acts.append(act(muted.has(m.n.toLowerCase()) ? "unmute" : "mute user", () => muteUser(m.n, !muted.has(m.n.toLowerCase()))));
+                    if (own && !m.u) acts.append(act("edit", () => editInline(m, el)));
+                    if (own || (isAdmin && !m.a)) acts.append(act("delete", async () => { try { await send_("DELETE", `/rooms/${room.id}/messages/${encodeURIComponent(m.id)}`); poll(true); } catch (e) { toast(e.message, true); } }));
+                    if (isAdmin && !own && !m.a) {
+                        acts.append(act("ban", () => banDialog(m)));
+                        acts.append(act(adminMuted.has(m.n.toLowerCase()) ? "admin unmute" : "admin mute", () => adminMuted.has(m.n.toLowerCase()) ? adminUnmute(m) : adminMuteDialog(m)));
+                    }
+
+                    const el = h("div", { class: "gc-m" + (own ? " me" : "") + (m.a ? " adm" : "") }, head,
+                        m.rp ? h("div", { class: "gc-rp" }, h("b", {}, m.rp.n + ": "), m.rp.t) : "",
+                        m.f ? fileEl(m.f) : "",
+                        m.t ? h("p", { class: "gc-t" }, m.t) : "", acts);
+                    return el;
+                });
+                if (!els.length) els.push(h("div", { class: "gc-empty" }, "no messages yet. say something!"));
+                box.replaceChildren(...els);
+                if (stick) box.scrollTop = box.scrollHeight;
+            }
+
+            function editInline(m, el) {
+                const input = h("input", { class: "gc-in", maxlength: 300, value: m.t });
+                const row = h("div", { class: "gc-row" }, input,
+                    h("button", { class: "btn primary", type: "button", onclick: save }, "save"),
+                    h("button", { class: "btn", type: "button", onclick: () => render() }, "cancel"));
+                async function save() {
+                    const t = input.value.trim(); if (!t) return;
+                    try { await send_("PATCH", `/rooms/${room.id}/messages/${encodeURIComponent(m.id)}`, { text: t }); poll(true); }
+                    catch (e) { toast(e.filtered ? RULES : e.message, true); }
+                }
+                input.onkeydown = e => { if (e.key === "Enter") save(); if (e.key === "Escape") render(); };
+                el.querySelector(".gc-t")?.replaceWith(row);
+                el.querySelector(".gc-acts")?.remove();
+                input.focus();
+            }
+
+            async function showHistory(m) {
+                try {
+                    const d = await api(`/rooms/${room.id}/messages/${encodeURIComponent(m.id)}`);
+                    dialog("edit history", [
+                        ...d.history.map((e, i) => h("div", { class: "gc-hist" }, e.t, h("small", {}, `version ${i + 1} · ${new Date(e.at).toLocaleString()}`))),
+                        h("div", { class: "gc-hist" }, d.text, h("small", {}, "current version")),
+                    ], [{ label: "close", fn: c => c() }]);
+                } catch (e) { toast(e.message, true); }
+            }
+
+            function reportDialog(m) {
+                const reason = h("select", {}, ["harassment or hate", "spam or scam", "private information", "inappropriate content", "other rule violation"].map(t => h("option", {}, t)));
+                const det = h("textarea", { maxlength: 500, rows: 3, placeholder: "add context that will help a moderator" });
+                const mu = h("input", { type: "checkbox", checked: true });
+                dialog("report message", [
+                    h("p", { class: "gc-note" }, `report a message from ${m.n} for moderator review.`),
+                    ...field("reason", reason), ...field("extra details (optional)", det),
+                    h("label", {}, mu, " also mute this user (hide their messages for me)"),
+                ], [{
+                    label: "send report", primary: true, fn: async close => {
+                        await post("/report", { room: room.id, id: m.id, reason: reason.value, details: det.value });
+                        hidden.add(m.id); store("silence:chatHidden", [...hidden].slice(-500));
+                        if (mu.checked && !m.a) muteUser(m.n, true); else render();
+                        close(); toast("thanks, we hid this message for you. a moderator will review it.");
+                    },
+                }, cancel]);
+            }
+
+            /* staff tools */
+            function banDialog(m) {
+                const type = h("select", {}, [["username", "username ban"], ["ip", "ip ban"], ["device", "device ban"]].map(([k, t]) => h("option", { value: k }, t)));
+                const dur = durSelect(), reason = h("input", { maxlength: 80, placeholder: "reason for ban…" });
+                dialog(`ban ${m.n}`, [...field("ban type", type), ...field("duration", dur), ...field("reason (optional)", reason)], [{
+                    label: "ban", primary: true, fn: async close => {
+                        await post("/mod/ban", { room: room.id, id: m.id, type: type.value, minutes: Number(dur.value), reason: reason.value });
+                        close(); toast(`banned ${m.n}`);
+                    },
+                }, cancel]);
+            }
+            function adminMuteDialog(m) {
+                const dur = durSelect(), reason = h("input", { maxlength: 80, placeholder: "reason for mute…" });
+                dialog(`admin mute ${m.n}`, [h("p", { class: "gc-note" }, "this mutes them for everyone in the chat."), ...field("duration", dur), ...field("reason (optional)", reason)], [{
+                    label: "mute", primary: true, fn: async close => {
+                        await post("/mod/mute", { room: room.id, id: m.id, minutes: Number(dur.value), reason: reason.value });
+                        close(); await loadAdminMutes();
+                    },
+                }, cancel]);
+            }
+            async function adminUnmute(m) {
+                if (!confirm(`unmute ${m.n}?`)) return;
+                try { await post("/mod/unmute", { room: room.id, id: m.id }); await loadAdminMutes(); } catch (e) { toast(e.message, true); }
+            }
+
+            /* ── popups for new messages ── */
+            function popup(m) {
+                const el = h("div", { class: "pop" }, h("b", {}, (m.a ? "[admin] " : "") + m.n + " · " + (room.id === "general" ? "global" : room.name)), h("span", {}, m.t || "sent a file: " + (m.f?.name || "")));
+                const close = () => el.remove();
+                el.onclick = () => { const b = $("#msgs"); b.scrollTop = b.scrollHeight; $("#q").focus(); close(); };
+                $("#pops").append(el);
+                while ($("#pops").children.length > 3) $("#pops").firstChild.remove();
+                setTimeout(close, 5000);
+            }
+            function announce(list) {
+                if (alerts === "off") return;
+                for (const m of list.slice(-3)) {
+                    popup(m);
+                    if (alerts === "system" && "Notification" in window && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
+                        try { new Notification(`${m.n} · ${room.name}`, { body: m.t || "sent a file", tag: "silence-chat" }); } catch { }
+                    }
+                }
+            }
+            const ALERTS = ["popups", "system", "off"];
+            const paintAlerts = () => { $("#c-alerts").textContent = "alerts: " + (alerts === "system" ? "popups + system" : alerts); };
+            $("#c-alerts").onclick = async () => {
+                alerts = ALERTS[(ALERTS.indexOf(alerts) + 1) % ALERTS.length];
+                if (alerts === "system" && "Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch { } }
+                if (alerts === "system" && !("Notification" in window && Notification.permission === "granted")) { toast("system notifications are blocked in this browser", true); alerts = "off"; }
+                store("silence:chatAlerts", alerts); paintAlerts(); schedule();
+            };
+
+            /* ── polling ── */
+            async function poll(force) {
+                if (!room || !token) return;
+                if (busy) { if (force) again = true; return; }
+                busy = true;
+                const r = room;
+                try {
+                    const d = await api(`/rooms/${r.id}/messages?v=${force ? "" : encodeURIComponent(v)}`);
+                    if (r === room && !d.same) {
+                        v = d.v; items = d.items;
+                        if (seen) {
+                            const fresh = items.filter(m => !seen.has(m.id) && m.n !== user && (m.a || !muted.has(m.n.toLowerCase())) && !hidden.has(m.id));
+                            if (fresh.length) announce(fresh);
+                        }
+                        seen = new Set(items.map(m => m.id));
+                        render();
+                    }
+                    fails = 0;
+                } catch (e) {
+                    fails++;
+                    if (r === room && (e.status === 404 || e.status === 403 || e.pw)) { delete passes[r.id]; toast(e.status === 404 ? "that room is gone" : e.message, true); if (room === r) showLobby(); return; }
+                } finally {
+                    busy = false;
+                    if (again) { again = false; poll(true); } else schedule();
+                }
+            }
+            function schedule() {
+                clearTimeout(timer);
+                if (!room || $("#chat").hidden) return;
+                if (document.hidden && alerts !== "system") return; // hidden tabs only keep polling for system notifications
+                timer = setTimeout(() => poll(false), Math.min((document.hidden ? 15000 : POLL) * (1 + fails), 30000));
+            }
+            document.addEventListener("visibilitychange", () => { if (!document.hidden) { poll(true); resetIdle(); } else schedule(); });
+
+            /* ── inactivity: stop polling after 10 min until "i'm still here" ── */
+            function resetIdle() {
+                clearTimeout(idleTimer);
+                if (!room) return;
+                idleTimer = setTimeout(async () => {
+                    clearTimeout(timer);
+                    dialog("you've been inactive", [h("p", { class: "gc-note" }, "chat paused to save bandwidth. click below to keep going.")], [{
+                        label: "i'm still here", primary: true, fn: async close => {
+                            try {
+                                const d = await post("/renew");
+                                token = d.token; store("silence:chatToken", token, sessionStorage);
+                            } catch { return; }
+                            close(); poll(true); resetIdle();
+                        },
+                    }]);
+                }, IDLE_MS);
+            }
+            ["keydown", "pointerdown"].forEach(ev => document.addEventListener(ev, () => { if (room && !$("#chat").hidden && !document.querySelector("dialog[open]")) resetIdle(); }, { passive: true }));
+
+            /* ── send ── */
+            const status = (t, bad) => { const el = $("#c-status"); el.textContent = t; el.style.color = bad ? "#ff6b6b" : ""; };
+            $("#c-reply-x").onclick = () => { replyTo = null; $("#c-reply").hidden = true; };
+
+            $("#f").onsubmit = async e => {
+                e.preventDefault();
+                const q = $("#q"), text = q.value.trim();
+                if (!text && !pending) return;
+                const now = Date.now();
+                if (now < cooldownUntil) { status("slow down!", true); return; }
+                const btn = $("#send"); btn.disabled = true; status("");
+                let ok = false;
+                try {
+                    await post(`/rooms/${room.id}/messages`, { text, replyTo: replyTo ? { id: replyTo.id } : null, attachment: pending ? { id: pending.id } : null });
+                    ok = true; selfMuted = false; $("#c-unmute").hidden = true;
+                    q.value = ""; replyTo = null; pending = null; $("#c-reply").hidden = true;
+                    await poll(true);
+                } catch (err) {
+                    if (err.muted) { selfMuted = true; $("#c-unmute").hidden = false; }
+                    status(err.filtered ? RULES : err.message, true);
+                } finally {
+                    let wait = 0;
+                    if (ok) {
+                        sendTimes = sendTimes.filter(t => now - t < 10000); sendTimes.push(now);
+                        if (sendTimes.length >= 5) { wait = 10000; sendTimes = []; status("slow down!", true); } else wait = 1500;
+                        cooldownUntil = Date.now() + wait;
+                    }
+                    setTimeout(() => { btn.disabled = false; if ($("#c-status").textContent === "slow down!") status(""); }, wait);
+                }
+            };
+
+            $("#c-unmute-b").onclick = async () => {
+                const until = Number(load("silence:unmuteCooldown", 0));
+                const left = until - Date.now();
+                if (left > 0) return toast(`wait ${Math.ceil(left / 1000)}s before asking again`, true);
+                try {
+                    await post(`/rooms/${room.id}/messages`, { unmuteRequest: true });
+                    store("silence:unmuteCooldown", Date.now() + 60000); poll(true); toast("sent");
+                } catch (e) { toast(e.message, true); }
+            };
+
+            /* ── files: upload first, then it's attached to your next message ── */
+            $("#attach").onclick = () => $("#file").click();
+            $("#file").onchange = async e => {
+                const file = e.target.files[0];
+                e.target.value = "";
+                if (!file) return;
+                if (file.size > MAX_FILE) return status("file too big (5mb max).", true);
+                status("uploading…");
+                try {
+                    const d = await api(`/upload?${new URLSearchParams({ room: room.id, name: file.name })}`, {
+                        method: "POST", headers: { "content-type": file.type || "application/octet-stream" }, body: file,
+                    });
+                    pending = d; status(`${file.name} ready, hit send.`);
+                } catch (err) { status(err.message, true); }
+            };
+
+            /* ── go ── */
+            paintAlerts();
+            if (token && user) afterLogin().catch(() => signOut()); else show("gate");
+        })();
+    </script>
+</body>
+
+</html>
