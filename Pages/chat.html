@@ -523,6 +523,8 @@
             }
 
             async function afterLogin() {
+                const open = load("silence:chatOpen", "", sessionStorage); // set when you click a popup on another page
+                if (open) { pendingRoom = open; try { sessionStorage.removeItem("silence:chatOpen"); } catch { } }
                 if (pendingRoom) {            // opened from a share link
                     const id = pendingRoom; pendingRoom = null;
                     history.replaceState(null, "", location.pathname);
@@ -539,6 +541,7 @@
             /* ── 2. lobby ── */
             function showLobby() {
                 room = null; clearTimeout(timer);
+                try { sessionStorage.removeItem("silence:chatWatch"); } catch { } // left the room: stop site-wide popups
                 show("lobby");
                 $("#l-who").replaceChildren("signed in as ", h("b", {}, user), isAdmin ? h("span", { class: "gc-badge" }, "admin") : "");
                 loadRooms();
@@ -620,6 +623,7 @@
             const isOwner = () => room && room.id !== "general" && room.by === user;
             function enterChat() {
                 show("chat");
+                store("silence:chatWatch", room.id, sessionStorage); // site-wide popups watch the room you were last in
                 items = []; v = ""; seen = null; replyTo = null; pending = null; fails = 0;
                 $("#c-name").textContent = room.id === "general" ? "global chat" : room.name;
                 $("#c-share").hidden = room.id === "general";
@@ -857,11 +861,13 @@
                     const d = await api(`/rooms/${r.id}/messages?v=${force ? "" : encodeURIComponent(v)}`);
                     if (r === room && !d.same) {
                         v = d.v; items = d.items;
+                        store("silence:popSince", { r: r.id, t: items.reduce((x, m) => Math.max(x, m.ts), 0) }, sessionStorage); // site-wide popups: what you've seen
                         if (seen) {
                             const fresh = items.filter(m => !seen.has(m.id) && m.n !== user && (m.a || !muted.has(m.n.toLowerCase())) && !hidden.has(m.id));
                             if (fresh.length) announce(fresh);
                         }
                         seen = new Set(items.map(m => m.id));
+                        store("silence:chatWatch", { id: r.id, name: r.name, last: items.length ? items[items.length - 1].id : "" }, sessionStorage); // site-wide popups follow this room
                         render();
                     }
                     fails = 0;
