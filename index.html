@@ -344,7 +344,23 @@
 </head>
 
 <body class="loading">
-    <script>try { if (sessionStorage.getItem("silence:unlocked") !== "1") document.body.classList.add("locked") } catch (e) { document.body.classList.add("locked") }</script>
+    <script>
+        const params = new URLSearchParams(location.search);
+        const showDisguise =
+            location.hostname.includes("tempotype.org") ||
+            params.get("tempotype") === "true";
+
+        try {
+            if (
+                showDisguise &&
+                sessionStorage.getItem("silence:unlocked") !== "1"
+            ) {
+                document.body.classList.add("locked");
+            }
+        } catch (e) {
+            if (showDisguise) document.body.classList.add("locked");
+        }
+    </script>
 
     <div class="bar" aria-hidden="true"></div>
     <button id="panic" type="button" aria-label="close" title="close">×</button>
@@ -384,6 +400,9 @@
             const CDN = `https://cdn.jsdelivr.net/gh/${CONFIG.repo}@${CONFIG.ref}/`;
             const LOCAL = new URL("./", location.href).href;
             const LOCAL_FIRST = /[?&]local\b/.test(location.search) || location.hostname.includes("localhost")
+            const SHOW_DISGUISE =
+                location.hostname.includes("tempotype.org") ||
+                new URLSearchParams(location.search).get("tempotype") === "true";
 
             async function checkForUpdates(page = 1, perPage = 1) {
                 try {
@@ -827,7 +846,7 @@
             }
 
             async function show(want) {
-                const name = isUnlocked() ? want : "disguise";   // locked: every route is the typing test
+                const name = SHOW_DISGUISE && !isUnlocked() ? "disguise" : want;   // locked: every route is the typing test
                 const my = ++token;
                 if (!pages.has(name)) {
                     if (current) document.body.classList.add("busy");   // stay on the current page, thin bar only
