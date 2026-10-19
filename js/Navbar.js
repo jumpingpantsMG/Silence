@@ -172,7 +172,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             const token = read(sessionStorage, "silence:chatToken", "");
             if (!token || mode() === "off") return;                          // not signed in to chat, or alerts off: no requests
 
-            const room = read(sessionStorage, "silence:chatWatch", "general");
+            let room = read(sessionStorage, "silence:chatWatch", "general");
+            if (room && typeof room === "object") room = room.id;           // tolerate the old object format
+            if (typeof room !== "string" || !room) room = "general";
             const me = read(sessionStorage, "silence:chatUser", "");
             const headers = { authorization: "Bearer " + token };
             const pass = read(sessionStorage, "silence:roomPass", {})[room];

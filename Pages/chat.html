@@ -867,7 +867,6 @@
                             if (fresh.length) announce(fresh);
                         }
                         seen = new Set(items.map(m => m.id));
-                        store("silence:chatWatch", { id: r.id, name: r.name, last: items.length ? items[items.length - 1].id : "" }, sessionStorage); // site-wide popups follow this room
                         render();
                     }
                     fails = 0;
