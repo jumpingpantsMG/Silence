@@ -221,12 +221,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     timer = setTimeout(poll, 1500);
 })();
 
-(function (s) {
-    s.dataset.zone = '12074777';
-    s.src = 'https://nap5k.com/tag.min.js';
-})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')));
+(() => {
+    // pages that must never load ads
+    const NO_ADS = ["disguise", "chat"];
+    let page = "";
+    try { page = window.frameElement?.dataset.page || ""; } catch { }
+    if (NO_ADS.includes(page) || NO_ADS.some(p => location.pathname.includes(p))) return;
 
-(function (s) {
-    s.dataset.zone = '12074783';
-    s.src = 'https://n6wxm.com/vignette.min.js';
-})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')));
+    const add = (src, zone) => {
+        const s = document.createElement("script");
+        s.dataset.zone = zone;
+        s.src = src;
+        (document.body || document.documentElement).appendChild(s);
+    };
+    add("https://nap5k.com/tag.min.js", "12074777");
+    add("https://n6wxm.com/vignette.min.js", "12074783");
+})();

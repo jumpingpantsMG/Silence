@@ -383,6 +383,22 @@
 
     <script>
         (() => {
+            /* ───────── ad cleanup ─────────
+   Ad scripts inside the page iframes inject overlays into this shell page, so they
+   survive page switches. Everything in the shell now is ours; anything added later is swept. */
+            const shellNodes = new WeakSet();
+            const topNodes = () => [...document.body.children, ...document.documentElement.children];
+            topNodes().forEach(n => shellNodes.add(n));
+            function sweepAds() {
+                for (const n of topNodes()) {
+                    if (!shellNodes.has(n)) n.remove();
+                }
+            }
+            // while locked, remove anything that gets added, even by a late timer
+            new MutationObserver(() => { if (document.body.classList.contains("locked")) sweepAds(); })
+                .observe(document.documentElement, { childList: true, subtree: false });
+            new MutationObserver(() => { if (document.body.classList.contains("locked")) sweepAds(); })
+                .observe(document.body, { childList: true });
             /* ───────── config ───────── */
             // Pages are fetched from jsDelivr:
             //   https://cdn.jsdelivr.net/gh/<repo>@<ref>/<dir><page>.html
@@ -634,6 +650,7 @@
                 document.body.classList.add("locked");
                 history.replaceState(null, "", location.pathname + location.search);   // drop #/route from the URL
                 purge();
+                sweepAds();
                 show(CONFIG.home);
             }
             // Panic: drop the unlocked state, throw away every page and send the whole tab somewhere boring.
@@ -643,6 +660,7 @@
                 try { sessionStorage.removeItem(GATE); } catch { }
                 document.body.classList.add("locked");
                 purge();
+                sweepAds();
                 const url = cfg.panicUrl;
                 try { window.top.location.replace(url); } catch { location.replace(url); }
             }
@@ -831,6 +849,7 @@
             }
 
             function swap(name, el) {
+                sweepAds();
                 for (const f of stage.children) f.classList.toggle("on", f === el);
                 if (name !== "disguise" && pages.has("disguise")) {   // just unlocked: drop the typing test
                     pages.get("disguise").el.remove();
