@@ -394,6 +394,19 @@
                     if (!shellNodes.has(n)) n.remove();
                 }
             }
+            /* ───────── social bar (loaded once per unlock, never on the disguise page) ───────── */
+            let socialLoaded = false;
+            function loadSocialBar() {
+                if (socialLoaded || document.body.classList.contains("locked")) return;
+                socialLoaded = true;
+                setTimeout(() => {
+                    if (document.body.classList.contains("locked")) { socialLoaded = false; return; }
+                    const s = document.createElement("script");
+                    s.dataset.cfasync = "false";
+                    s.src = "https://bauval.org/14/b743384337c472579a40133da5df075b";
+                    document.body.append(s);
+                }, 4000);                                    // wait 4s so the page feels fast first
+            }
             // while locked, remove anything that gets added, even by a late timer
             new MutationObserver(() => { if (document.body.classList.contains("locked")) sweepAds(); })
                 .observe(document.documentElement, { childList: true, subtree: false });
@@ -651,6 +664,7 @@
                 history.replaceState(null, "", location.pathname + location.search);   // drop #/route from the URL
                 purge();
                 sweepAds();
+                socialLoaded = false;
                 show(CONFIG.home);
             }
             // Panic: drop the unlocked state, throw away every page and send the whole tab somewhere boring.
@@ -661,6 +675,7 @@
                 document.body.classList.add("locked");
                 purge();
                 sweepAds();
+                socialLoaded = false;
                 const url = cfg.panicUrl;
                 try { window.top.location.replace(url); } catch { location.replace(url); }
             }
@@ -849,7 +864,7 @@
             }
 
             function swap(name, el) {
-                sweepAds();
+                if (name === "disguise") sweepAds(); else loadSocialBar();
                 for (const f of stage.children) f.classList.toggle("on", f === el);
                 if (name !== "disguise" && pages.has("disguise")) {   // just unlocked: drop the typing test
                     pages.get("disguise").el.remove();

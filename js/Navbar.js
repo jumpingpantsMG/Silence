@@ -220,20 +220,3 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     timer = setTimeout(poll, 1500);
 })();
-
-(() => {
-    // pages that must never load ads
-    const NO_ADS = ["disguise", "chat"];
-    let page = "";
-    try { page = window.frameElement?.dataset.page || ""; } catch { }
-    if (NO_ADS.includes(page) || NO_ADS.some(p => location.pathname.includes(p))) return;
-
-    const add = (src, zone) => {
-        const s = document.createElement("script");
-        s.dataset.zone = zone;
-        s.src = src;
-        (document.body || document.documentElement).appendChild(s);
-    };
-    add("https://nap5k.com/tag.min.js", "12074777");
-    add("https://n6wxm.com/vignette.min.js", "12074783");
-})();
