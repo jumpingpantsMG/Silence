@@ -407,6 +407,15 @@
                     document.body.append(s);
                 }, 4000);                                    // wait 4s so the page feels fast first
             }
+            // ads must not rename the tab: put the real title back whenever it changes
+            const titleEl = document.querySelector("title");
+            let settingTitle = false;
+            new MutationObserver(() => {
+                if (settingTitle) return;
+                settingTitle = true;
+                apply();                       // restores the title from settings (or the disguise title)
+                settingTitle = false;
+            }).observe(titleEl, { childList: true, characterData: true, subtree: true });
             // while locked, remove anything that gets added, even by a late timer
             new MutationObserver(() => { if (document.body.classList.contains("locked")) sweepAds(); })
                 .observe(document.documentElement, { childList: true, subtree: false });

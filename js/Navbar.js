@@ -223,7 +223,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 (() => {
     // pages that get NO banner (player is yours; disguise must stay clean; chat/admin hold login tokens)
-    const NO_ADS = ["player", "disguise", "admin", "chat"];
+    const NO_ADS = ["player", "disguise", "admin"];
     let page = "";
     try { page = window.frameElement?.dataset.page || ""; } catch { }
     if (NO_ADS.includes(page) || NO_ADS.some(p => location.pathname.includes(p))) return;
