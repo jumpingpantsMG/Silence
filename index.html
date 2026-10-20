@@ -407,15 +407,6 @@
                     document.body.append(s);
                 }, 4000);                                    // wait 4s so the page feels fast first
             }
-            // ads must not rename the tab: put the real title back whenever it changes
-            const titleEl = document.querySelector("title");
-            let settingTitle = false;
-            new MutationObserver(() => {
-                if (settingTitle) return;
-                settingTitle = true;
-                apply();                       // restores the title from settings (or the disguise title)
-                settingTitle = false;
-            }).observe(titleEl, { childList: true, characterData: true, subtree: true });
             // while locked, remove anything that gets added, even by a late timer
             new MutationObserver(() => { if (document.body.classList.contains("locked")) sweepAds(); })
                 .observe(document.documentElement, { childList: true, subtree: false });
@@ -650,6 +641,14 @@
                 keyLabel, keyOk, lock, unlock, panic, cloak, refresh, iconFromFile, iconFromUrl, setCustomIcon, info: () => ({ ref: lastRef, sha: /^[0-9a-f]{40}$/i.test(lastRef) }),
             };
             apply();
+            // ads must not rename the tab: put the real title back whenever something changes it
+            const wantedTitle = () => document.body.classList.contains("locked")
+                ? DEFAULTS.title
+                : (cfg.title.trim() || pageTitle);
+            new MutationObserver(() => {
+                const want = wantedTitle();
+                if (document.title !== want) document.title = want;   // only writes when it's wrong, so no loop
+            }).observe(document.head, { childList: true, subtree: true, characterData: true });
 
             /* ───────── lock ─────────
                Until the passphrase is typed on the disguise page, every route shows that page.
