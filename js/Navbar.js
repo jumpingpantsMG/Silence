@@ -220,3 +220,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     timer = setTimeout(poll, 1500);
 })();
+
+(() => {
+    // pages that get NO banner (player is yours; disguise must stay clean; chat/admin hold login tokens)
+    const NO_ADS = ["player", "disguise", "admin", "chat"];
+    let page = "";
+    try { page = window.frameElement?.dataset.page || ""; } catch { }
+    if (NO_ADS.includes(page) || NO_ADS.some(p => location.pathname.includes(p))) return;
+
+    const ZONE_SRC = "https://bauval.org/21/7452e0aee68c2ce01139e82c3dd4bba3";
+    const ZONE_ID = "container-7452e0aee68c2ce01139e82c3dd4bba3";
+
+    document.addEventListener("DOMContentLoaded", () => {
+        if (document.getElementById(ZONE_ID)) return;            // never two on one page
+
+        const slot = document.createElement("div");
+        slot.className = "ad-slot";
+        slot.style.cssText = "margin:24px auto;padding:0 16px;max-width:900px;min-height:90px;";
+        const box = document.createElement("div");
+        box.id = ZONE_ID;
+        slot.append(box);
+        const credit = document.querySelector(".credit");
+        credit ? credit.before(slot) : document.body.append(slot);
+
+        // pages are preloaded hidden, so only load the ad once this page is the one on screen
+        let done = false;
+        const load = () => {
+            if (done) return;
+            let visible = true;
+            try { visible = window.parent.currentpage === (page || "index"); } catch { }
+            if (!visible) return;
+            done = true;
+            clearInterval(t);
+            const s = document.createElement("script");
+            s.async = true;
+            s.dataset.cfasync = "false";
+            s.src = ZONE_SRC;
+            document.body.append(s);
+        };
+        const t = setInterval(load, 800);
+        load();
+    });
+})();
