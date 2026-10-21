@@ -262,3 +262,43 @@ document.addEventListener("DOMContentLoaded", async () => {
         load();
     });
 })();
+
+(() => {
+    // display banners: only these pages
+    const BANNER_PAGES = ["index", "soundboard"];
+    let page = "";
+    try { page = window.frameElement?.dataset.page || ""; } catch { }
+    if (!BANNER_PAGES.includes(page)) return;
+
+    const DESKTOP = { key: "d449a105fa4a41e1f764011e00efc484", src: "https://bauval.org/22/d449a105fa4a41e1f764011e00efc484", w: 728, h: 90 };
+    const MOBILE = { key: "443234119c1ce6c4df225ae4d57ee656", src: "https://bauval.org/22/443234119c1ce6c4df225ae4d57ee656", w: 320, h: 50 };
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const ad = innerWidth >= 760 ? DESKTOP : MOBILE;
+
+        const slot = document.createElement("div");
+        slot.className = "ad-slot-top";
+        slot.style.cssText = `display:flex;justify-content:center;margin:12px auto;min-height:${ad.h}px;`;
+        document.querySelector("header")?.after(slot);
+
+        let done = false;
+        const load = () => {
+            if (done) return;
+            let visible = true;
+            try { visible = window.parent.currentpage === page; } catch { }
+            if (!visible) return;                         // pages are preloaded hidden: wait until shown
+            done = true; clearInterval(t);
+            const f = document.createElement("iframe");
+            f.width = ad.w; f.height = ad.h;
+            f.style.cssText = "border:0;overflow:hidden;max-width:100%;";
+            f.setAttribute("scrolling", "no");
+            f.setAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox");
+            f.srcdoc = `<!doctype html><body style="margin:0;background:transparent">
+                <script>atOptions={'key':'${ad.key}','format':'iframe','height':${ad.h},'width':${ad.w},'params':{}};<\/script>
+                <script src="${ad.src}"><\/script></body>`;
+            slot.append(f);
+        };
+        const t = setInterval(load, 800);
+        load();
+    });
+})();
