@@ -96,13 +96,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 });
 
+/* ───────── site-wide chat popups ─────────
+   Paste at the very bottom of js/Navbar.js.
+   Watches the last chat room you were in (global chat by default) and shows a popup for new
+   messages on every page except chat (which has its own) and the disguise page.
+   Uses the same "alerts" setting as the chat page: popups / popups + system / off. */
+/* ───────── site-wide chat popups ─────────
+   Paste at the very bottom of js/Navbar.js.
+   Watches the last chat room you were in (global chat by default) and shows a popup for new
+   messages on every page except chat (which has its own) and the disguise page.
+   Uses the same "alerts" setting as the chat page: popups / popups + system / off. */
 (() => {
     const SKIP = ["chat", "disguise"];              // pages that must not show popups
     let page = "";
     try { page = window.frameElement?.dataset.page || ""; } catch { }
-    if (SKIP.includes(page) || SKIP.some(p => location.pathname.includes(p))) return;
+    if (SKIP.includes(page) || SKIP.some(p => location.pathname.includes(p))) { try { if (JSON.parse(localStorage.getItem("silence:popDebug"))) console.log("[popups] skipped page", page, location.pathname); } catch { } return; }
 
-    const POLL_MS = 10000;                          // visible tab: one cheap request every 10s
+    const POLL_MS = 15000;                          // visible tab: one cheap request every 15s
     const IDLE_MS = 60 * 60 * 1000;                 // stop after 1h without any activity on the page
 
     let origin = location.origin;
@@ -111,6 +121,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const read = (st, k, d) => { try { const v = JSON.parse(st.getItem(k)); return v ?? d; } catch { return d; } };
     const write = (st, k, v) => { try { st.setItem(k, JSON.stringify(v)); } catch { } };
+
+    const dbg = (...a) => { if (read(localStorage, "silence:popDebug", false)) console.log("[popups]", ...a); };   // localStorage["silence:popDebug"]=true to turn on
 
     let v = "", timer = null, busy = false, fails = 0, stopped = false, lastActive = Date.now();
 
@@ -170,7 +182,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         busy = true;
         try {
             const token = read(sessionStorage, "silence:chatToken", "");
-            if (!token || mode() === "off") return;                          // not signed in to chat, or alerts off: no requests
+            if (!token || mode() === "off") { dbg("skip: token", !!token, "alerts", mode()); return; }                          // not signed in to chat, or alerts off: no requests
 
             let room = read(sessionStorage, "silence:chatWatch", "general");
             if (room && typeof room === "object") room = room.id;           // tolerate the old object format
@@ -181,6 +193,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (pass) headers["x-room-pass"] = encodeURIComponent(pass);
 
             const res = await fetch(`${API}/rooms/${encodeURIComponent(room)}/messages?v=${encodeURIComponent(v)}`, { headers });
+            dbg("poll", room, "status", res.status);
             if (res.status === 401) { stopped = true; return; }              // session ended (sign in on the chat page again)
             if (res.status === 403 || res.status === 404) {                  // room deleted or no longer allowed
                 write(sessionStorage, "silence:chatWatch", "general"); v = ""; return;
@@ -192,14 +205,17 @@ document.addEventListener("DOMContentLoaded", async () => {
             v = d.v;
 
             const items = d.items || [];
+            dbg("got", items.length, "items");
             const newest = items.reduce((x, m) => Math.max(x, m.ts), 0);
             const since = read(sessionStorage, "silence:popSince", null);    // {r: room, t: newest message time already seen}
             write(sessionStorage, "silence:popSince", { r: room, t: Math.max(newest, since && since.r === room ? since.t : 0) });
+            dbg("since", since, "me", me);
             if (!since || since.r !== room) return;                          // first look at this room: learn the time, no popups
 
             const muted = new Set(read(localStorage, "silence:chatMuted", []));
             const hidden = new Set(read(localStorage, "silence:chatHidden", []));
             const fresh = items.filter(m => m.ts > since.t && m.n !== me && (m.a || !muted.has(m.n.toLowerCase())) && !hidden.has(m.id));
+            dbg("fresh", fresh.length);
             if (fresh.length) announce(fresh, room, mode());
         } catch { fails++; }
         finally { busy = false; schedule(); }
@@ -218,6 +234,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     for (const ev of ["pointerdown", "keydown", "pointermove"]) {
         document.addEventListener(ev, () => { lastActive = Date.now(); if (!timer && !busy && !stopped) schedule(); }, { passive: true, capture: true });
     }
+    dbg("loaded on page", page || location.pathname);
     timer = setTimeout(poll, 1500);
 })();
 

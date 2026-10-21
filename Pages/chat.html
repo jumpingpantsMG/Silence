@@ -317,7 +317,7 @@
     <main class="wrap stack">
         <section class="head">
             <h1>chat</h1>
-            <p>global, free, no account. no links, be kind. files up to 5mb (newest 10 are kept).</p>
+            <p>global, free, no account. no links, be kind. files up to 2mb (newest 25 are kept).</p>
         </section>
 
         <!-- 1. gate -->
@@ -382,7 +382,7 @@
             <div class="gc-bar" id="c-unmute" hidden><span>you're muted.</span><button class="btn" id="c-unmute-b"
                     type="button">ask to be unmuted</button></div>
             <form class="gc-row" id="f" autocomplete="off">
-                <button class="btn" id="attach" type="button" title="send a file (5mb max)">file</button>
+                <button class="btn" id="attach" type="button" title="send a file (2mb max)">file</button>
                 <input type="file" id="file" hidden
                     accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,application/zip,audio/mpeg,video/mp4,video/webm">
                 <input class="gc-in" id="q" maxlength="300" placeholder="message…">
@@ -401,8 +401,8 @@
     <script>
         (() => {
             const API = "/api/global";
-            const POLL = 5000;
-            const MAX_FILE = 5 * 1024 * 1024;
+            const POLL = 6000;
+            const MAX_FILE = 2 * 1024 * 1024;
             const IDLE_MS = 10 * 60 * 1000;          // stop polling after 10 min of no activity (saves server reads)
             const RULES = "that message breaks the chat rules. it was sent to moderators for review. repeated violations can get you banned.";
 
@@ -952,7 +952,7 @@
                 const file = e.target.files[0];
                 e.target.value = "";
                 if (!file) return;
-                if (file.size > MAX_FILE) return status("file too big (5mb max).", true);
+                if (file.size > MAX_FILE) return status("file too big (2mb max).", true);
                 status("uploading…");
                 try {
                     const d = await api(`/upload?${new URLSearchParams({ room: room.id, name: file.name })}`, {

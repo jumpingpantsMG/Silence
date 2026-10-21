@@ -2,7 +2,7 @@
 
 A gaming site built from plain HTML, CSS and JavaScript, served by a Cloudflare Worker.
 
-The Worker does two jobs: it serves the static site, and it runs a small API for forms, the AI page and the global chat.
+The Worker does two jobs: it serves the static site, and it runs a small API for forms, the AI page and the global chat. Forms live in Cloudflare KV, and the chat (messages, rooms, bans and files) lives in Cloudflare D1.
 
 ---
 
@@ -46,9 +46,7 @@ cd Silence
 npx wrangler login
 ```
 
-### 1. Create the KV namespace
-
-The Worker stores forms, chat messages, rooms and files in one KV namespace bound as `FORMS`.
+### 1. Create the KV namespace (forms)
 
 ```bash
 npx wrangler kv namespace create FORMS
@@ -56,16 +54,34 @@ npx wrangler kv namespace create FORMS
 
 Copy the `id` it prints into `wrangler.toml`.
 
-### 2. Check `wrangler.toml`
+### 2. Create the D1 database (chat)
+
+```bash
+npx wrangler d1 create silence-chat
+```
+
+It prints a `database_id`. Add the binding to `wrangler.toml`:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "silence-chat"
+database_id = "paste-the-id-here"
+```
+
+You do not need to create any tables. The Worker creates them the first time chat is used.
+
+### 3. Check `wrangler.toml`
 
 `worker.js` expects these bindings:
 
-| Binding  | Type                | Purpose                         |
-| -------- | ------------------- | ------------------------------- |
-| `ASSETS` | static assets       | the site itself                 |
-| `FORMS`  | KV namespace        | forms, chat messages, rooms, files |
+| Binding  | Type          | Purpose                          |
+| -------- | ------------- | -------------------------------- |
+| `ASSETS` | static assets | the site itself                  |
+| `FORMS`  | KV namespace  | form submissions and chat reports |
+| `DB`     | D1 database   | chat messages, rooms, bans, files |
 
-### 3. Add secrets
+### 4. Add secrets
 
 ```bash
 npx wrangler secret put ADMIN_TOKEN       # admin page login, also signs chat sessions
@@ -94,7 +110,7 @@ Use Wrangler, not a plain file server. A plain server (`python3 -m http.server`,
 npx wrangler dev
 ```
 
-Then open the address it prints (usually `http://localhost:8787`). Local KV is simulated on your machine and starts empty.
+Then open the address it prints (usually `http://localhost:8787`). Local KV and D1 are simulated on your machine and start empty.
 
 ---
 
@@ -120,17 +136,27 @@ The chat sign-in asks staff usernames for a password. Everyone else just picks a
 | --------------------- | --------------------------------------- |
 | Messages kept         | newest 100 per room                     |
 | Message length        | 300 characters                          |
-| File size             | 5 MB                                    |
-| Files kept            | newest 10 across the whole site         |
+| File size             | 2 MB                                    |
+| Files kept            | newest 25 across the whole site         |
 | Rooms                 | up to 50                                |
 | Session length        | 24 hours (chat pauses after 10 idle minutes) |
 | Message and file expiry | 7 days                                |
 
 The word filter is the `BLOCKED_WORDS` list near the top of the chat section in `worker.js`. Add your own words there. Links are blocked for everyone except staff.
 
-### KV free-plan limits
+### Free-plan limits
 
-Cloudflare's free KV plan allows roughly 1,000 writes and 100,000 reads per day. A chat message costs about 3 writes, and every open chat tab polls every 5 seconds. A busy chat can hit those limits. When it does, posting fails until the daily reset, and forms stop saving as well. A paid Workers plan removes the problem.
+The free plan is plenty for a small chat.
+
+| Service | Free per day | What uses it |
+| ------- | ------------ | ------------ |
+| D1 rows written | 100,000 | a message is about 3 rows, a 2 MB file about 7 |
+| D1 rows read    | 5,000,000 | chat polls and loading messages |
+| D1 storage      | 5 GB | messages and the newest 25 files |
+| KV writes       | 1,000 | form submissions and chat reports only |
+| Worker requests | 100,000 | every API call, including each chat poll |
+
+Chat polling is cheap on purpose: the Worker remembers each room's recent messages for a few seconds and only asks D1 when something changed. The number to watch is Worker requests, because every open chat tab makes one request every few seconds. Check usage in the Cloudflare dashboard under Workers & Pages.
 
 ---
 
@@ -142,7 +168,7 @@ Silence/
 ├── pages/            one HTML file per page (games, forms, soundboard, settings, admin, ai, chat)
 ├── js/               shared scripts, for example Navbar.js
 ├── style.css         shared styles used by every page
-├── worker.js         the Cloudflare Worker (static site + API)
+├── worker.js         the Cloudflare Worker (static site + API + chat storage)
 ├── wrangler.toml     Cloudflare configuration
 └── README.md
 ```
@@ -171,7 +197,7 @@ All routes are served by `worker.js`. Anything that is not under `/api/` falls t
 npx wrangler deploy
 ```
 
-This publishes the Worker and the static assets together. The secrets and the KV binding must already exist on the account (see [Setup](#setup)).
+This publishes the Worker and the static assets together. The secrets and the KV and D1 bindings must already exist on the account (see [Setup](#setup)).
 
 After deploying, check these three things:
 
@@ -203,9 +229,13 @@ Set `ADMIN_TOKEN` or `CHAT_SECRET`. Chat sessions are signed with one of them.
 
 Passwords in `CHAT_ADMINS` are matched exactly, including capital letters and apostrophes. Check for a stray space or comma in the secret.
 
+### Chat says "chat storage is not set up"
+
+The D1 binding is missing. Create the database and add the `[[d1_databases]]` block to `wrangler.toml` (see [Setup](#2-create-the-d1-database-chat)), then redeploy or restart `wrangler dev`.
+
 ### Chat or forms stop saving
 
-You have probably reached the free-plan KV limits (see [Configuration](#kv-free-plan-limits)). They reset daily.
+You have probably reached a free-plan limit (see [Configuration](#free-plan-limits)). They reset daily at 00:00 UTC.
 
 ### Changes do not show up after deploying
 

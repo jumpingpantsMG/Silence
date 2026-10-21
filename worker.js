@@ -231,13 +231,15 @@ async function ai(request, env) {
              CHAT_ADMINS (optional)    "alice:password1,bob:password2"  extra staff accounts
              CHAT_SECRET (optional)    signs sessions instead of ADMIN_TOKEN
 
-   KV (FORMS namespace):
-     room:<id>                 room record; list metadata = {name,d,ao,pw,by,ts,la}
-     msg:<room>:<inv>:<rand>   message; the whole message is in metadata so one list() = one poll
-     file:<inv>-<rand>         file bytes; only the newest FILE_KEEP are kept
-     mute:d:<device>           admin mute (TTL = length)
-     ban:u|i|d:<value>         ban by username / ip / device (TTL = length)
-   Reports are written as normal "sub:" records (type "report"). */
+   D1 (binding DB): one small table, "kv", used like a key/value store, plus "chunks" for file bytes.
+     room:<id>                 room record; metadata = {name,d,ao,pw,by,ts,la}
+     msg:<room>:<inv>:<rand>   message; metadata = what the page needs, value = full record
+     head:<room>               changes on every send / edit / delete (polls read only this)
+     file:<inv>-<rand>         file info; the bytes are in "chunks"; only the newest FILE_KEEP are kept
+     mute:d:<device>           admin mute (expires after its length)
+     ban:u|i|d:<value>         ban by username / ip / device (expires after its length)
+   Reports are written as normal "sub:" records (type "report") in the KV namespace with the forms.
+   The tables are created automatically the first time chat is used. */
 
 const CHAT_KEEP = 100;                 // messages kept per room
 const CHAT_MAX_ROOMS = 50;
@@ -245,13 +247,117 @@ const CHAT_TTL = 7 * 24 * 3600;        // messages / files expire after 7 days u
 const ROOM_TTL = 28 * 24 * 3600;       // rooms expire after 28 days without activity
 const TEXT_MAX = 300;
 const SESSION_MS = 24 * 3600 * 1000;
-const FILE_MAX = 5 * 1024 * 1024;      // 5 MB
-const FILE_KEEP = 10;                  // newest N files kept site-wide, older ones are deleted
+const FILE_MAX = 2 * 1024 * 1024;      // 2 MB
+const FILE_KEEP = 25;                  // newest N files kept site-wide, older ones are deleted
 const FILE_TYPES = new Set([
     "image/png", "image/jpeg", "image/gif", "image/webp",
     "application/pdf", "text/plain", "application/zip",
     "audio/mpeg", "video/mp4", "video/webm",
 ]);
+/* ---------- storage (Cloudflare D1) ---------- */
+let schemaP = null;
+const schemaOf = (env) => {
+    if (!env.DB) throw new Error("NO_D1");
+    return (schemaP ||= env.DB.batch([
+        env.DB.prepare("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT, m TEXT, x INTEGER)"),
+        env.DB.prepare("CREATE INDEX IF NOT EXISTS kv_x ON kv (x) WHERE x IS NOT NULL"),
+        env.DB.prepare("CREATE TABLE IF NOT EXISTS chunks (fid TEXT NOT NULL, n INTEGER NOT NULL, d TEXT NOT NULL, PRIMARY KEY (fid, n))"),
+    ]).catch((e) => { schemaP = null; throw e; }));
+};
+const KEY_END = "\uffff";
+const parseJson = (t) => { try { return JSON.parse(t); } catch { return null; } };
+// same calls as a KV namespace (get / getWithMetadata / put / delete / list), so the chat code reads the same
+function db(env) {
+    const run = async (sql, ...args) => { await schemaOf(env); return env.DB.prepare(sql).bind(...args); };
+    const row = async (k) => {
+        const r = await (await run("SELECT v, m, x FROM kv WHERE k = ?", k)).first();
+        return !r || (r.x && r.x < Date.now()) ? null : r;
+    };
+    return {
+        async get(k, type) { const r = await row(k); return !r ? null : type === "json" ? parseJson(r.v) : r.v; },
+        async getWithMetadata(k, type) {
+            const r = await row(k);
+            return { value: !r ? null : type === "json" ? parseJson(r.v) : r.v, metadata: r?.m ? parseJson(r.m) : null };
+        },
+        async put(k, v, o = {}) {
+            await (await run(
+                "INSERT INTO kv (k, v, m, x) VALUES (?, ?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, m = excluded.m, x = excluded.x",
+                k, String(v), o.metadata ? JSON.stringify(o.metadata) : null, o.expirationTtl ? Date.now() + o.expirationTtl * 1000 : null,
+            )).run();
+        },
+        async delete(k) { await (await run("DELETE FROM kv WHERE k = ?", k)).run(); },
+        async list({ prefix = "", limit = 1000, cursor } = {}) {
+            const q = await run(
+                `SELECT k, m FROM kv WHERE k ${cursor ? ">" : ">="} ? AND k < ? AND (x IS NULL OR x > ?) ORDER BY k LIMIT ?`,
+                cursor || prefix, prefix + KEY_END, Date.now(), limit,
+            );
+            const { results } = await q.all();
+            return {
+                keys: results.map((r) => ({ name: r.k, metadata: r.m ? parseJson(r.m) : undefined })),
+                list_complete: results.length < limit,
+                cursor: results.length ? results[results.length - 1].k : undefined,
+            };
+        },
+    };
+}
+
+// files: bytes are stored as base64 text in chunks (one D1 row can't hold more than ~2 MB)
+const CHUNK = 384 * 1024;
+function toB64(u8) {
+    let s = "";
+    for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+    return btoa(s);
+}
+function fromB64(t) {
+    const b = atob(t), u = new Uint8Array(b.length);
+    for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+    return u;
+}
+async function putFile(env, fid, meta, buf) {
+    await schemaOf(env);
+    const u8 = new Uint8Array(buf), st = [];
+    st.push(env.DB.prepare("INSERT INTO kv (k, v, m, x) VALUES (?, '', ?, ?)").bind("file:" + fid, JSON.stringify(meta), Date.now() + CHAT_TTL * 1000));
+    for (let i = 0, n = 0; i < u8.length; i += CHUNK, n++) {
+        st.push(env.DB.prepare("INSERT INTO chunks (fid, n, d) VALUES (?, ?, ?)").bind(fid, n, toB64(u8.subarray(i, i + CHUNK))));
+    }
+    await env.DB.batch(st);
+    // keep only the newest FILE_KEEP files, site-wide
+    await env.DB.batch([
+        env.DB.prepare("DELETE FROM kv WHERE k >= 'file:' AND k < 'file;' AND k NOT IN (SELECT k FROM kv WHERE k >= 'file:' AND k < 'file;' ORDER BY k LIMIT ?)").bind(FILE_KEEP),
+        env.DB.prepare("DELETE FROM chunks WHERE 'file:' || fid NOT IN (SELECT k FROM kv WHERE k >= 'file:' AND k < 'file;')"),
+    ]);
+}
+async function getFileBytes(env, fid) {
+    await schemaOf(env);
+    const { results } = await env.DB.prepare("SELECT d FROM chunks WHERE fid = ? ORDER BY n").bind(fid).all();
+    if (!results.length) return null;
+    const parts = results.map((r) => fromB64(r.d));
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.length; }
+    return out;
+}
+async function delFile(env, fid) {
+    await schemaOf(env);
+    await env.DB.batch([
+        env.DB.prepare("DELETE FROM kv WHERE k = ?").bind("file:" + fid),
+        env.DB.prepare("DELETE FROM chunks WHERE fid = ?").bind(fid),
+    ]);
+}
+
+// expired rows (messages, bans, files...) are cleared now and then, at most every 30 min per isolate
+let lastClean = 0;
+async function cleanup(env) {
+    const now = Date.now();
+    if (now - lastClean < 1800000) return;
+    lastClean = now;
+    await schemaOf(env);
+    await env.DB.batch([
+        env.DB.prepare("DELETE FROM kv WHERE x IS NOT NULL AND x < ?").bind(now),
+        env.DB.prepare("DELETE FROM chunks WHERE 'file:' || fid NOT IN (SELECT k FROM kv WHERE k >= 'file:' AND k < 'file;')"),
+    ]);
+}
+
 const RULES_MSG = "that message breaks the chat rules. it was sent to moderators for review. repeated violations can get you banned.";
 
 // ---- word filter + link blocking (add your own words) ----
@@ -340,9 +446,9 @@ const devHash = async (dev, env) => hex((await sha256("d:" + dev + secretOf(env)
 // ---- bans / mutes ----
 async function banOf(env, user, ih, dh) {
     const [a, b, c] = await Promise.all([
-        env.FORMS.get("ban:u:" + user.toLowerCase(), "json"),
-        env.FORMS.get("ban:i:" + ih, "json"),
-        env.FORMS.get("ban:d:" + dh, "json"),
+        db(env).get("ban:u:" + user.toLowerCase(), "json"),
+        db(env).get("ban:i:" + ih, "json"),
+        db(env).get("ban:d:" + dh, "json"),
     ]);
     return a || b || c;
 }
@@ -352,21 +458,57 @@ const banError = (b) => json({ error: b.reason ? `you are banned: ${b.reason}` :
 async function sendGuard(env, s, ip) {
     const ih = await ipHash(ip, env);
     if (s.a) return { ih };
-    const [ban, mute] = await Promise.all([banOf(env, s.u, ih, s.d), env.FORMS.get("mute:d:" + s.d, "json")]);
+    const [ban, mute] = await Promise.all([banOf(env, s.u, ih, s.d), db(env).get("mute:d:" + s.d, "json")]);
     if (ban) return { res: banError(ban) };
     if (mute) return { res: json({ error: mute.reason || "you were muted by an admin", muted: true }, 403) };
     return { ih };
 }
 
 // ---- rooms ----
+/* Polling must stay off KV list(): the free plan allows only 1,000 lists per day.
+   - getRoom is remembered in memory for 20s
+   - each room has a tiny "head:<room>" key that changes on every send / edit / delete
+   - a poll reads that one key (a cheap read), and only lists the messages when the head changed
+   - answers are also kept in memory for a few seconds, so many tabs share one KV read */
+const FEED_TTL = 4000;       // answer polls from memory for 4s
+const FEED_MAX = 600000;     // re-list at least every 10 min (messages expire on their own)
+const feeds = new Map();     // room -> { head, v, items, exp, at }
+const roomMem = new Map();   // room -> { rec, exp }
+let roomsMem = null;         // { keys, exp }  (the lobby list)
 async function getRoom(env, room) {
     if (room === "general") return { name: "Global Chat" };
-    const r = await env.FORMS.get("room:" + room, "json");
-    return r && typeof r === "object" ? r : null;
+    const c = roomMem.get(room);
+    if (c && Date.now() < c.exp) return c.rec;
+    const r = await db(env).get("room:" + room, "json");
+    const rec = r && typeof r === "object" ? r : null;
+    if (rec) roomMem.set(room, { rec, exp: Date.now() + 20000 });
+    return rec;
+}
+const newHead = () => Date.now().toString(36) + rand6();
+async function bumpFeed(env, room) {                 // call after anything that changes a room's messages
+    feeds.delete(room);
+    await db(env).put("head:" + room, newHead(), { expirationTtl: CHAT_TTL });
+}
+async function feedOf(env, room) {
+    const now = Date.now();
+    let f = feeds.get(room);
+    if (f && now < f.exp) return f;
+    let head = await db(env).get("head:" + room);
+    if (!head) { head = newHead(); await db(env).put("head:" + room, head, { expirationTtl: CHAT_TTL }); }
+    if (f && f.head === head && now - f.at < FEED_MAX) { f.exp = now + FEED_TTL; return f; }
+    const l = await db(env).list({ prefix: `msg:${room}:`, limit: CHAT_KEEP + 1 });
+    if (l.keys.length > CHAT_KEEP) {   // prune the overflow here, in one statement
+        await schemaOf(env);
+        await env.DB.prepare("DELETE FROM kv WHERE k >= ? AND k < ? AND k NOT IN (SELECT k FROM kv WHERE k >= ? AND k < ? ORDER BY k LIMIT ?)")
+            .bind(`msg:${room}:`, `msg:${room}:${KEY_END}`, `msg:${room}:`, `msg:${room}:${KEY_END}`, CHAT_KEEP).run();
+    }
+    const items = l.keys.slice(0, CHAT_KEEP).map((k) => ({ id: k.name.split(":").slice(2).join(":"), ...k.metadata })).reverse(); // oldest -> newest
+    f = { head, v: head, items, exp: now + FEED_TTL, at: now };
+    feeds.set(room, f);
+    return f;
 }
 const roomMeta = (r) => ({ name: r.name, d: r.d || "", ao: r.ao ? 1 : 0, pw: r.ph ? 1 : 0, by: r.by, ts: r.ts, la: r.la || r.ts });
-const putRoom = (env, id, r) =>
-    env.FORMS.put("room:" + id, JSON.stringify(r), { metadata: roomMeta(r), expirationTtl: ROOM_TTL });
+const putRoom = (env, id, r) => (roomMem.delete(id), roomsMem = null, db(env).put("room:" + id, JSON.stringify(r), { metadata: roomMeta(r), expirationTtl: ROOM_TTL }));
 const touched = new Map();
 async function touchRoom(env, id, rec) { // bump "last active" at most every 5 min per room (saves KV writes)
     if (id === "general" || Date.now() - (touched.get(id) || 0) < 300000) return;
@@ -459,8 +601,11 @@ async function chatRenew(request, env) {
 async function chatRooms(request, env) {
     const a = await sess(request, env);
     const no = needSession(a); if (no) return no;
-    const l = await env.FORMS.list({ prefix: "room:", limit: CHAT_MAX_ROOMS });
-    const rooms = l.keys
+    if (!roomsMem || Date.now() > roomsMem.exp) {
+        const l = await db(env).list({ prefix: "room:", limit: CHAT_MAX_ROOMS });
+        roomsMem = { keys: l.keys, exp: Date.now() + 15000 };
+    }
+    const rooms = roomsMem.keys
         .filter((k) => !k.metadata?.ao || a.s.a) // admin-only rooms are invisible to everyone else
         .map((k) => ({ id: k.name.slice(5), name: k.metadata.name, d: k.metadata.d, pw: !!k.metadata.pw, ao: !!k.metadata.ao, by: k.metadata.by, ts: k.metadata.ts, la: k.metadata.la }));
     return json({ rooms: [{ id: "general", name: "Global Chat", d: "everyone can see and join" }, ...rooms] });
@@ -482,7 +627,7 @@ async function chatCreateRoom(request, env) {
     const pw = clean(body?.password, 40);
     if (body?.isPrivate && !pw) return json({ error: "password is required for private rooms" }, 400);
 
-    const l = await env.FORMS.list({ prefix: "room:", limit: CHAT_MAX_ROOMS + 1 });
+    const l = await db(env).list({ prefix: "room:", limit: CHAT_MAX_ROOMS + 1 });
     if (l.keys.length >= CHAT_MAX_ROOMS) return json({ error: "too many rooms, ask an admin to clean up" }, 400);
 
     const id = crypto.randomUUID().slice(0, 8);
@@ -530,12 +675,9 @@ async function chatEditRoom(request, env, id) {
 }
 
 async function wipeRoomMessages(env, id) {
-    let cursor;
-    do {
-        const l = await env.FORMS.list({ prefix: `msg:${id}:`, limit: 1000, cursor });
-        await Promise.all(l.keys.map((k) => env.FORMS.delete(k.name)));
-        cursor = l.list_complete ? null : l.cursor;
-    } while (cursor);
+    await schemaOf(env);
+    await env.DB.prepare("DELETE FROM kv WHERE k >= ? AND k < ?").bind(`msg:${id}:`, `msg:${id}:${KEY_END}`).run();
+    await bumpFeed(env, id);
 }
 
 async function chatDeleteRoom(request, env, id) {
@@ -547,7 +689,9 @@ async function chatDeleteRoom(request, env, id) {
     if (!rec) return json({ error: "room not found" }, 404);
     if (!a.s.a && !isOwner(rec, a.s)) return json({ error: "not authorized" }, 403);
     await wipeRoomMessages(env, id);
-    await env.FORMS.delete("room:" + id);
+    await db(env).delete("room:" + id);
+    await db(env).delete("head:" + id);
+    roomMem.delete(id); roomsMem = null;
     return json({ ok: true });
 }
 
@@ -580,10 +724,8 @@ async function storeMessage(env, room, meta, extra) {
     const id = `${invTs(ts)}:${rand6()}`;
     const m = { ...meta, ts };
     if (bytes(m) > 980) return json({ error: "message too long (emoji and non-english letters count extra)" }, 400);
-    await env.FORMS.put(`msg:${room}:${id}`, JSON.stringify({ ...m, ...extra }), { metadata: m, expirationTtl: CHAT_TTL });
-    // keep only the newest CHAT_KEEP (ascending key order = newest first)
-    const l = await env.FORMS.list({ prefix: `msg:${room}:`, limit: CHAT_KEEP + 20 });
-    await Promise.all(l.keys.slice(CHAT_KEEP).map((k) => env.FORMS.delete(k.name)));
+    await db(env).put(`msg:${room}:${id}`, JSON.stringify({ ...m, ...extra }), { metadata: m, expirationTtl: CHAT_TTL });
+    await bumpFeed(env, room);       // old messages beyond CHAT_KEEP are pruned the next time the room is listed
     return json({ ok: true, id });
 }
 
@@ -595,12 +737,9 @@ async function chatMessages(request, env, room, url) {
     const denied = await roomGate(request, env, rec, a.s);
     if (denied) return denied;
 
-    const l = await env.FORMS.list({ prefix: `msg:${room}:`, limit: CHAT_KEEP });
-    const items = l.keys.map((k) => ({ id: k.name.split(":").slice(2).join(":"), ...k.metadata })).reverse(); // oldest -> newest
-    // cheap "nothing changed" answer; edits bump `et`, deletes change the count
-    const v = items.length + ":" + (items.length ? items[items.length - 1].id : "") + ":" + items.reduce((x, m) => Math.max(x, m.et || 0), 0);
-    if (url.searchParams.get("v") === v) return json({ same: true });
-    return json({ v, items });
+    const f = await feedOf(env, room);
+    if (url.searchParams.get("v") === f.v) return json({ same: true });
+    return json({ v: f.v, items: f.items });
 }
 
 async function autoReport(env, room, s, text) {
@@ -634,7 +773,7 @@ async function chatSend(request, env, room) {
         const ih = await ipHash(ip, env);
         const ban = await banOf(env, s.u, ih, s.d);
         if (ban) return banError(ban);
-        if (!(await env.FORMS.get("mute:d:" + s.d, "json"))) return json({ error: "you're not muted" }, 400);
+        if (!(await db(env).get("mute:d:" + s.d, "json"))) return json({ error: "you're not muted" }, 400);
         if (limited("um:" + s.d, 60000, 1)) return json({ error: "wait a minute before asking again" }, 429);
         return storeMessage(env, room, { n: s.u, t: "can you unmute me?", u: 1 }, { ih, dh: s.d });
     }
@@ -644,7 +783,7 @@ async function chatSend(request, env, room) {
     if (body?.attachment?.id) {
         const fid = String(body.attachment.id);
         if (!/^\d{13}-[0-9a-f]{6}$/.test(fid)) return json({ error: "bad attachment" }, 400);
-        const l = await env.FORMS.list({ prefix: "file:" + fid, limit: 1 }); // metadata only, doesn't read the bytes
+        const l = await db(env).list({ prefix: "file:" + fid, limit: 1 }); // metadata only, doesn't read the bytes
         const fm = l.keys[0]?.metadata;
         if (!fm || fm.dh !== s.d || fm.room !== room) return json({ error: "attachment expired, upload it again" }, 400);
         f = { id: fid, name: fm.name, type: fm.type, size: fm.size };
@@ -662,11 +801,11 @@ async function chatSend(request, env, room) {
     let rp;
     const rid = String(body?.replyTo?.id || "");
     if (validMsgId(rid)) {
-        const q = await env.FORMS.get(`msg:${room}:${rid}`, "json");
+        const q = await db(env).get(`msg:${room}:${rid}`, "json");
         if (q) rp = { i: rid, n: q.n, t: (q.t || (q.f ? "[file] " + q.f.name : "")).slice(0, 40) };
     }
     const res = await storeMessage(env, room, { n: s.u, t: text, ...(f ? { f } : {}), ...(rp ? { rp } : {}), ...(s.a ? { a: 1 } : {}) }, { ih: g.ih, dh: s.d });
-    if (res.ok) await touchRoom(env, room, rec);
+    if (res.ok) { await touchRoom(env, room, rec); await cleanup(env).catch(() => { }); }
     return res;
 }
 
@@ -677,7 +816,7 @@ async function chatOneMessage(request, env, room, id) {
     if (!rec) return json({ error: "no such room" }, 404);
     const denied = await roomGate(request, env, rec, a.s);
     if (denied) return denied;
-    const v = await env.FORMS.get(`msg:${room}:${id}`, "json");
+    const v = await db(env).get(`msg:${room}:${id}`, "json");
     if (!v) return json({ error: "message not found" }, 404);
     return json({ text: v.t, history: v.eh || [] }); // [{t, at}] oldest first
 }
@@ -698,7 +837,7 @@ async function chatEdit(request, env, room, id) {
     const denied = await roomGate(request, env, rec, s);
     if (denied) return denied;
     const key = `msg:${room}:${id}`;
-    const v = await env.FORMS.get(key, "json");
+    const v = await db(env).get(key, "json");
     if (!v) return json({ error: "message not found" }, 404);
     if (v.n !== s.u || v.dh !== s.d) return json({ error: "not your message" }, 403);
     if (v.u) return json({ error: "can't edit this" }, 400);
@@ -713,7 +852,8 @@ async function chatEdit(request, env, room, id) {
     v.t = text; v.e = 1; v.et = Date.now();
     const meta = metaOf(v);
     if (bytes(meta) > 980) return json({ error: "message too long (emoji and non-english letters count extra)" }, 400);
-    await env.FORMS.put(key, JSON.stringify(v), { metadata: meta, expirationTtl: CHAT_TTL });
+    await db(env).put(key, JSON.stringify(v), { metadata: meta, expirationTtl: CHAT_TTL });
+    await bumpFeed(env, room);
     return json({ ok: true });
 }
 
@@ -723,12 +863,13 @@ async function chatDeleteMessage(request, env, room, id) {
     const no = needSession(a); if (no) return no;
     const s = a.s;
     const key = `msg:${room}:${id}`;
-    const v = await env.FORMS.get(key, "json");
+    const v = await db(env).get(key, "json");
     if (!v) return json({ error: "message not found" }, 404);
     const own = v.n === s.u && v.dh === s.d;
     if (!own && !(s.a && !v.a)) return json({ error: "not your message" }, 403); // staff can delete others, but not other staff
-    if (v.f?.id) await env.FORMS.delete("file:" + v.f.id);
-    await env.FORMS.delete(key);
+    if (v.f?.id) await delFile(env, v.f.id);
+    await db(env).delete(key);
+    await bumpFeed(env, room);
     return json({ ok: true });
 }
 
@@ -743,7 +884,7 @@ async function chatUpload(request, env, url) {
 
     const len = Number(request.headers.get("content-length") || 0);
     if (!len) return json({ error: "empty file" }, 411);
-    if (len > FILE_MAX) return json({ error: "file too big (5mb max)" }, 413);
+    if (len > FILE_MAX) return json({ error: "file too big (2mb max)" }, 413);
     const type = (request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
     if (!FILE_TYPES.has(type)) return json({ error: "file type not allowed" }, 415);
 
@@ -760,21 +901,19 @@ async function chatUpload(request, env, url) {
     if (g.res) return g.res;
 
     const buf = await request.arrayBuffer();
-    if (!buf.byteLength || buf.byteLength > FILE_MAX) return json({ error: "file too big (5mb max)" }, 413);
+    if (!buf.byteLength || buf.byteLength > FILE_MAX) return json({ error: "file too big (2mb max)" }, 413);
 
     const ts = Date.now();
     const fid = `${invTs(ts)}-${rand6()}`;
-    await env.FORMS.put("file:" + fid, buf, { metadata: { name, type, size: buf.byteLength, ts, room, dh: s.d }, expirationTtl: CHAT_TTL });
-    // keep only the newest FILE_KEEP files, site-wide
-    const l = await env.FORMS.list({ prefix: "file:", limit: FILE_KEEP + 10 });
-    await Promise.all(l.keys.slice(FILE_KEEP).map((k) => env.FORMS.delete(k.name)));
+    await putFile(env, fid, { name, type, size: buf.byteLength, ts, room, dh: s.d }, buf);
+    await cleanup(env).catch(() => { });
     return json({ ok: true, id: fid, name, type, size: buf.byteLength });
 }
 
 async function chatFile(request, env, fid) {
     if (!/^\d{13}-[0-9a-f]{6}$/.test(fid)) return json({ error: "not found" }, 404);
-    const { value, metadata } = await env.FORMS.getWithMetadata("file:" + fid, "arrayBuffer");
-    if (!value || !metadata) return json({ error: "file expired" }, 404);
+    const { metadata } = await db(env).getWithMetadata("file:" + fid);
+    if (!metadata) return json({ error: "file expired" }, 404);
 
     // files in private / admin-only rooms need the same access as the room (page fetches them with headers)
     const a = await sess(request, env);
@@ -786,6 +925,8 @@ async function chatFile(request, env, fid) {
         if (denied) return denied;
     }
     const inline = metadata.type.startsWith("image/");
+    const value = await getFileBytes(env, fid);
+    if (!value) return json({ error: "file expired" }, 404);
     return new Response(value, {
         headers: {
             "content-type": metadata.type,
@@ -809,7 +950,7 @@ async function chatReport(request, env) {
     const room = clean(body?.room, 24);
     const id = clean(body?.id, 30);
     if (!validRoom(room) || !validMsgId(id)) return json({ error: "bad message" }, 400);
-    const m = await env.FORMS.get(`msg:${room}:${id}`, "json");
+    const m = await db(env).get(`msg:${room}:${id}`, "json");
     if (!m) return json({ error: "message is gone" }, 404);
 
     const reason = clean(body?.reason, 80);
@@ -881,11 +1022,11 @@ async function chatMod(request, env, s, p) {
     const what = p[0], m = request.method;
 
     if (what === "mutes" && m === "GET") {
-        const l = await env.FORMS.list({ prefix: "mute:", limit: 200 });
+        const l = await db(env).list({ prefix: "mute:", limit: 200 });
         return json({ items: l.keys.map((k) => ({ key: k.name, ...k.metadata })) });
     }
     if (what === "bans" && m === "GET") {
-        const l = await env.FORMS.list({ prefix: "ban:", limit: 200 });
+        const l = await db(env).list({ prefix: "ban:", limit: 200 });
         return json({ items: l.keys.map((k) => ({ key: k.name, ...k.metadata })) });
     }
 
@@ -893,7 +1034,7 @@ async function chatMod(request, env, s, p) {
         const room = p[1];
         if (!validRoom(room || "")) return json({ error: "bad room" }, 400);
         await wipeRoomMessages(env, room);
-        if (room !== "general" && !new URL(request.url).searchParams.has("wipe")) await env.FORMS.delete("room:" + room);
+        if (room !== "general" && !new URL(request.url).searchParams.has("wipe")) { await db(env).delete("room:" + room); await db(env).delete("head:" + room); roomMem.delete(room); roomsMem = null; }
         return json({ ok: true });
     }
 
@@ -902,7 +1043,7 @@ async function chatMod(request, env, s, p) {
         try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
         const room = clean(body?.room, 24), id = clean(body?.id, 30);
         if (!validRoom(room) || !validMsgId(id)) return json({ error: "pick a message" }, 400);
-        const v = await env.FORMS.get(`msg:${room}:${id}`, "json");
+        const v = await db(env).get(`msg:${room}:${id}`, "json");
         if (!v) return json({ error: "message not found" }, 404);
         if (v.a) return json({ error: `can't ${what} an admin` }, 400);
 
@@ -912,14 +1053,14 @@ async function chatMod(request, env, s, p) {
         const opts = (extra) => ({ metadata: { user: v.n, reason, until, by: s.u, ...extra }, ...(minutes ? { expirationTtl: Math.max(60, minutes * 60) } : {}) });
         const rec = JSON.stringify({ reason, until, by: s.u, user: v.n });
 
-        if (what === "mute") { await env.FORMS.put("mute:d:" + v.dh, rec, opts()); return json({ ok: true }); }
-        if (what === "unmute") { await env.FORMS.delete("mute:d:" + v.dh); return json({ ok: true }); }
+        if (what === "mute") { await db(env).put("mute:d:" + v.dh, rec, opts()); return json({ ok: true }); }
+        if (what === "unmute") { await db(env).delete("mute:d:" + v.dh); return json({ ok: true }); }
 
         const type = body?.type;
         const key = type === "ip" ? "ban:i:" + v.ih : type === "device" ? "ban:d:" + v.dh : type === "username" ? "ban:u:" + v.n.toLowerCase() : "";
         if (!key) return json({ error: "bad ban type" }, 400);
-        if (what === "ban") await env.FORMS.put(key, rec, opts({ type }));
-        else await env.FORMS.delete(key);
+        if (what === "ban") await db(env).put(key, rec, opts({ type }));
+        else await db(env).delete(key);
         return json({ ok: true });
     }
     return json({ error: "not found" }, 404);
@@ -942,6 +1083,7 @@ export default {
                 if (url.pathname.startsWith("/api/global/")) return await globalChat(request, env, url);
                 return json({ error: "not found" }, 404);
             } catch (e) {
+                if (e?.message === "NO_D1") return json({ error: "chat storage is not set up (add the D1 binding named DB)" }, 503);
                 console.error(e);
                 return json({ error: "server error" }, 500);
             }
