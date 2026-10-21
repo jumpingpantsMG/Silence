@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /Pages/
+
+Sitemap: https://tempotype.org/sitemap.xml
