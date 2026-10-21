@@ -292,10 +292,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             f.width = ad.w; f.height = ad.h;
             f.style.cssText = "border:0;overflow:hidden;max-width:100%;";
             f.setAttribute("scrolling", "no");
-            f.setAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox");
-            f.srcdoc = `<!doctype html><body style="margin:0;background:transparent">
-                <script>atOptions={'key':'${ad.key}','format':'iframe','height':${ad.h},'width':${ad.w},'params':{}};<\/script>
-                <script src="${ad.src}"><\/script></body>`;
+            f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox");
+            f.srcdoc = `<!doctype html><meta name="color-scheme" content="dark"><body style="margin:0;background:transparent">
+    <script>atOptions={'key':'${ad.key}','format':'iframe','height':${ad.h},'width':${ad.w},'params':{}};<\/script>
+    <script src="${ad.src}"><\/script></body>`;
             slot.append(f);
         };
         const t = setInterval(load, 800);
