@@ -58,6 +58,42 @@
                     <label class="switch"><input type="checkbox" id="motion"
                             aria-label="Reduce motion"><span></span></label>
                 </div>
+
+                <div class="row">
+                    <div>
+                        <div class="t">Theme</div>
+                        <div class="d">Light or dark. The typing-test lock screen always stays dark.</div>
+                    </div>
+                    <div class="seg" id="theme">
+                        <button type="button" data-v="dark">dark</button>
+                        <button type="button" data-v="light">light</button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div>
+                        <div class="t">Background</div>
+                        <div class="d">A soft colour glow behind every page.</div>
+                    </div>
+                    <div class="seg" id="bg">
+                        <button type="button" data-v="none">default</button>
+                        <button type="button" data-v="aurora">aurora</button>
+                        <button type="button" data-v="sunset">sunset</button>
+                        <button type="button" data-v="ocean">ocean</button>
+                        <button type="button" data-v="midnight">midnight</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="bgUrl">Custom background image</label>
+                    <input id="bgUrl" type="text" maxlength="500" placeholder="https://example.com/wallpaper.jpg"
+                        autocomplete="off" spellcheck="false">
+                    <div class="hint"><span id="bgHint">paste an image url. it's dimmed so text stays readable.</span>
+                    </div>
+                    <div class="actions" style="margin-top:6px">
+                        <button class="btn sm" id="bgUse" type="button">use url</button>
+                        <button class="btn sm" id="bgClear" type="button" hidden>remove</button>
+                    </div>
+                </div>
             </section>
 
             <section class="panel">
@@ -73,6 +109,12 @@
                         <button type="button" data-t="Home">home</button>
                         <button type="button" data-t="Notes">notes</button>
                     </div>
+                    <div class="hint"><span>cloak presets set the title and the icon together.</span></div>
+                    <div class="seg" id="cloaks" aria-label="Cloak presets">
+                        <button type="button" data-t="Classroom" data-i="classroom">Classroom</button>
+                        <button type="button" data-t="Untitled document - Google Docs" data-i="docs">Docs</button>
+                        <button type="button" data-t="My Drive - Google Drive" data-i="drive">Drive</button>
+                    </div>
                 </div>
                 <div class="row">
                     <div>
@@ -86,6 +128,9 @@
                         <button type="button" data-v="folder">folder</button>
                         <button type="button" data-v="calendar">cal</button>
                         <button type="button" data-v="dot">dot</button>
+                        <button type="button" data-v="classroom">classroom</button>
+                        <button type="button" data-v="docs">docs</button>
+                        <button type="button" data-v="drive">drive</button>
                     </div>
                 </div>
                 <div class="field">
@@ -160,6 +205,23 @@
                     </div>
                     <label class="switch"><input type="checkbox" id="lockHidden"
                             aria-label="Lock when tab hidden"><span></span></label>
+                </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Auto-lock when idle</div>
+                        <div class="d">Locks after this long with no mouse or keyboard activity. Won't lock while a game
+                            or the
+                            soundboard has focus.</div>
+                    </div>
+                    <div class="seg" id="idleMin">
+                        <button type="button" data-v="0">off</button>
+                        <button type="button" data-v="1">1m</button>
+                        <button type="button" data-v="2">2m</button>
+                        <button type="button" data-v="5">5m</button>
+                        <button type="button" data-v="10">10m</button>
+                        <button type="button" data-v="15">15m</button>
+                        <button type="button" data-v="30">30m</button>
+                    </div>
                 </div>
                 <div class="row">
                     <div>
@@ -250,6 +312,11 @@
                 if (document.activeElement !== $("#title")) $("#title").value = cur.title;
                 $("#iconClear").hidden = !(cur.icon === "custom" && cur.customIcon);
                 if (document.activeElement !== $("#iconUrl")) $("#iconUrl").value = /^https?:/i.test(cur.customIcon || "") ? cur.customIcon : "";
+                document.querySelectorAll("#theme button").forEach(b => b.classList.toggle("on", b.dataset.v === cur.theme));
+                document.querySelectorAll("#bg button").forEach(b => b.classList.toggle("on", b.dataset.v === cur.bg));
+                document.querySelectorAll("#idleMin button").forEach(b => b.classList.toggle("on", Number(b.dataset.v) === cur.idleMin));
+                $("#bgClear").hidden = !(cur.bg === "custom" && cur.bgUrl);
+                if (document.activeElement !== $("#bgUrl")) $("#bgUrl").value = cur.bgUrl || "";
             }
             function save(patch, quiet) {
                 cur = { ...cur, ...patch };
@@ -266,6 +333,22 @@
 
             document.querySelectorAll("#titles button").forEach(b => b.addEventListener("click", () => { $("#title").value = b.dataset.t; save({ title: b.dataset.t }); }));
             $("#icon").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ icon: b.dataset.v }); });
+            $("#theme").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ theme: b.dataset.v }); });
+            $("#bg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ bg: b.dataset.v }); });
+            $("#idleMin").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ idleMin: Number(b.dataset.v) }); });
+            $("#cloaks").addEventListener("click", e => {
+                const b = e.target.closest("button"); if (!b) return;
+                $("#title").value = b.dataset.t;
+                save({ title: b.dataset.t, icon: b.dataset.i });
+            });
+
+            const bgHint = $("#bgHint"), bgHintText = bgHint.textContent;
+            const bgErr = m => { bgHint.textContent = m || bgHintText; bgHint.style.color = m ? "var(--danger)" : ""; };
+            $("#bgUse").addEventListener("click", async () => {
+                try { bgErr(); save({ bg: "custom", bgUrl: await S.bgFromUrl($("#bgUrl").value) }); }
+                catch (e) { bgErr(e.message); }
+            });
+            $("#bgClear").addEventListener("click", () => { bgErr(); save({ bg: "none", bgUrl: "" }); });
             // custom tab icon: url or upload
             const iconHint = $("#iconHint"), iconHintText = iconHint.textContent;
             const iconErr = m => { iconHint.textContent = m || iconHintText; iconHint.style.color = m ? "var(--danger)" : ""; };

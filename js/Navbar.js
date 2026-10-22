@@ -33,7 +33,7 @@ function createUpdateOverlay() {
             <div class="update-actions" style="justify-content:flex-start;margin-top:1.25rem;">
                 <button class="update-btn" style="width:100%;" id="update-confirm">Ok</button>
             </div>
-			<p class="update-meta" id="update-meta" style="margin-top:0.75rem;color:rgba(255,255,255,0.45);font-size:9px;">Unknown author</p>
+			<p class="update-meta" id="update-meta" style="margin-top:0.75rem;color:var(--muted);font-size:9px;">Unknown author</p>
         </div>
 		`;
 

@@ -32,9 +32,12 @@
         <div class="bar">
             <div class="chips" id="chips">
                 <button class="chip on" data-t="all">all</button>
+                <button class="chip" data-t="fav">favorites</button>
+                <button class="chip" data-t="recent">recent</button>
                 <button class="chip" data-t="html5">html5</button>
                 <button class="chip" data-t="flash">flash</button>
             </div>
+            <button class="btn sm" id="rand" type="button">random game</button>
             <span class="count" id="count"></span>
         </div>
 
@@ -55,6 +58,19 @@
                 </svg><span>back</span>
             </button>
             <h2 id="p-title"></h2>
+            <button class="pbtn" id="p-share" title="Copy link to this game">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+                </svg><span>share</span>
+            </button>
+            <button class="pbtn" id="p-report" title="Report this game as broken">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
+                </svg><span>report</span>
+            </button>
             <button class="pbtn" id="p-reload" title="Reload">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -69,6 +85,7 @@
                 </svg><span>fullscreen</span>
             </button>
         </div>
+        <div class="toast" id="toast" role="status"></div>
         <div class="pframe" id="pframe">
             <div class="spin" id="spin"></div>
         </div>
@@ -516,7 +533,7 @@ Cubes 2048.io|cubes2048.io|
 
             const $ = s => document.querySelector(s);
             const grid = $("#grid"), q = $("#q"), count = $("#count"), empty = $("#empty");
-            const player = $("#player"), pframe = $("#pframe"), spin = $("#spin");
+            const player = $("#player"), pframe = $("#pframe"), spin = $("#spin"), toastEl = $("#toast");
 
             /* ───────── parse catalog ───────── */
             let bucket = "semag";
@@ -530,6 +547,21 @@ Cubes 2048.io|cubes2048.io|
             }
             GAMES.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
 
+            /* ───────── saved lists (this browser only) ───────── */
+            const FAV_KEY = "silence:favs", REC_KEY = "silence:recent", RECENT_MAX = 24;
+            const load = k => { try { const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : []; } catch { return []; } };
+            const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } };
+            const favs = new Set(load(FAV_KEY));
+            let recent = load(REC_KEY);
+
+            let tt;
+            function toast(msg, bad) {
+                toastEl.textContent = msg;
+                toastEl.classList.toggle("err", !!bad);
+                toastEl.classList.add("show");
+                clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove("show"), 2600);
+            }
+
             /* ───────── helpers ───────── */
             const enc = p => p.split("/").map(encodeURIComponent).join("/");
             const base = g => `${R2}/${g.bucket}/${enc(g.dir)}`;
@@ -537,6 +569,13 @@ Cubes 2048.io|cubes2048.io|
             const coverUrl = g => g.image ? `${base(g)}/${enc(g.image)}` : "";
             const hue = s => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
             const initial = n => (n.match(/[a-z0-9]/i) || ["·"])[0].toUpperCase();
+
+            function toggleFav(g, btn) {
+                favs.has(g.dir) ? favs.delete(g.dir) : favs.add(g.dir);
+                store(FAV_KEY, [...favs]);
+                if (type === "fav") render();                       // drop it from the favorites view right away
+                else btn.classList.toggle("on", favs.has(g.dir));
+            }
 
             /* ───────── cards ───────── */
             function card(g, i) {
@@ -586,7 +625,16 @@ Cubes 2048.io|cubes2048.io|
                 title.textContent = g.name;
                 meta.append(title);
 
-                el.append(art, play, meta);
+                // star: a span (not a button) because it sits inside the card button
+                const fav = document.createElement("span");
+                fav.className = "fav" + (favs.has(g.dir) ? " on" : "");
+                fav.setAttribute("role", "button");
+                fav.setAttribute("aria-label", `Favorite ${g.name}`);
+                fav.title = "favorite";
+                fav.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>';
+                fav.addEventListener("click", e => { e.stopPropagation(); toggleFav(g, fav); });
+
+                el.append(art, play, meta, fav);
                 if (g.flash) {
                     const t = document.createElement("span");
                     t.className = "tag";
@@ -598,15 +646,21 @@ Cubes 2048.io|cubes2048.io|
             }
 
             /* ───────── filter + render ───────── */
+            const EMPTY = { fav: "no favorites yet. tap the star on a game.", recent: "nothing played yet.", all: "nothing here. try another search." };
             let type = "all", shown = [];
             function render() {
                 const term = q.value.trim().toLowerCase();
-                shown = GAMES.filter(g =>
-                    (type === "all" || (type === "flash") === g.flash) &&
-                    g.name.toLowerCase().includes(term));
+                let list;
+                if (type === "fav") list = GAMES.filter(g => favs.has(g.dir));
+                else if (type === "recent") list = recent.map(d => GAMES.find(g => g.dir === d)).filter(Boolean);   // most recent first
+                else if (type === "all") list = GAMES;
+                else list = GAMES.filter(g => (type === "flash") === g.flash);
+                shown = list.filter(g => g.name.toLowerCase().includes(term));
+
                 const frag = document.createDocumentFragment();
                 shown.forEach((g, i) => frag.append(card(g, i)));
                 grid.replaceChildren(frag);
+                empty.textContent = (!term && EMPTY[type]) || EMPTY.all;
                 empty.style.display = shown.length ? "none" : "block";
                 count.textContent = `${shown.length} game${shown.length === 1 ? "" : "s"}`;
             }
@@ -620,10 +674,28 @@ Cubes 2048.io|cubes2048.io|
             let t;
             q.addEventListener("input", () => { clearTimeout(t); t = setTimeout(render, 90); });
 
+            // random pick from whatever is currently listed
+            $("#rand").addEventListener("click", () => {
+                const pool = shown.length ? shown : GAMES;
+                open(pool[Math.floor(Math.random() * pool.length)]);
+            });
+
             /* ───────── player ───────── */
             let frame = null, current = null;
+
+            // keep the address bar on "#/index?play=<game>" while a game is open (replaceState: no reload, no history spam)
+            const setHash = id => {
+                try {
+                    const p = window.parent;
+                    p.history.replaceState(null, "", p.location.pathname + p.location.search + (id ? "#/index?play=" + encodeURIComponent(id) : ""));
+                } catch { }
+            };
+
             function open(g) {
                 current = g;
+                recent = [g.dir, ...recent.filter(d => d !== g.dir)].slice(0, RECENT_MAX);
+                store(REC_KEY, recent);
+                setHash(g.dir);
                 $("#p-title").textContent = g.name;
                 spin.style.display = "block";
                 frame?.remove();
@@ -645,12 +717,60 @@ Cubes 2048.io|cubes2048.io|
                 player.classList.remove("open");
                 document.body.classList.remove("playing");
                 frame?.remove(); frame = null; current = null;
+                setHash("");
+                if (type === "recent") render();                    // order changed while playing
             }
             $("#p-close").addEventListener("click", close);
             $("#p-reload").addEventListener("click", () => { if (current) open(current); });
             $("#p-full").addEventListener("click", () => {
                 (frame || pframe).requestFullscreen?.().catch(() => { });
             });
+
+            /* share: copies a link that opens this game straight away */
+            $("#p-share").addEventListener("click", async () => {
+                if (!current) return;
+                let link = "";
+                try { const p = window.parent; link = `${p.location.origin}${p.location.pathname}#/index?play=${encodeURIComponent(current.dir)}`; } catch { }
+                if (!link) return toast("couldn't make a link", true);
+                try { await navigator.clipboard.writeText(link); toast("link copied"); } catch { prompt("copy this link", link); }
+            });
+
+            /* report: sends a bug report through the normal forms api (same 30s cooldown as the forms page) */
+            const LAST = "silence:lastForm";
+            $("#p-report").addEventListener("click", async e => {
+                if (!current) return;
+                const btn = e.currentTarget;
+                let wait = 0;
+                try { wait = Math.max(0, 30000 - (Date.now() - +localStorage.getItem(LAST))); } catch { }
+                if (wait) return toast(`wait ${Math.ceil(wait / 1000)}s before reporting again`, true);
+                btn.disabled = true;
+                try {
+                    const r = await fetch("/api/forms", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({
+                            type: "bug", name: "", contact: "", website: "",
+                            subject: current.name,
+                            message: `Reported from the player: "${current.name}" (${current.bucket}/${current.dir}) doesn't load or is broken.`,
+                        }),
+                    });
+                    if (r.status === 429) throw new Error("too many reports, try again in a minute");
+                    if (!r.ok) throw new Error("couldn't send, try again");
+                    try { localStorage.setItem(LAST, Date.now()); } catch { }
+                    toast("thanks, reported");
+                } catch (ex) {
+                    toast(ex.message || "couldn't send, try again", true);
+                } finally { btn.disabled = false; }
+            });
+
+            /* ───────── share links: the shell fires "silence:route" whenever this page is shown ───────── */
+            function routePlay() {
+                let id = "";
+                try { id = new URLSearchParams(window.parent.location.hash.split("?")[1] || "").get("play") || ""; } catch { }
+                const g = id && GAMES.find(x => x.dir === id);
+                if (g && (!current || current.dir !== g.dir)) open(g);
+            }
+            addEventListener("silence:route", routePlay);
 
             /* ───────── keys ───────── */
             addEventListener("keydown", e => {

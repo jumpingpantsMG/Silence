@@ -55,7 +55,11 @@ body {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     background: var(--bg);
-    background-image: radial-gradient(900px circle at 50% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%);
+    background-image: var(--page-bg, radial-gradient(900px circle at 50% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%));
+    background-size: var(--page-bg-size, auto);
+    background-position: var(--page-bg-pos, 0 0);
+    background-attachment: var(--page-bg-att, scroll);
+    background-repeat: no-repeat;
     background-repeat: no-repeat;
 }
 
@@ -1017,6 +1021,44 @@ textarea.bad {
     animation: rot .8s linear infinite
 }
 
+.fav {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    z-index: 3;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, .5);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    opacity: 0;
+    transition: .2s;
+    cursor: pointer
+}
+
+.card:hover .fav,
+.card:focus-visible .fav,
+.fav.on {
+    opacity: 1
+}
+
+.fav.on {
+    color: var(--warn)
+}
+
+.fav.on svg {
+    fill: currentColor
+}
+
+@media (hover:none) {
+    .fav {
+        opacity: 1
+    }
+}
+
 /* ───────── soundboard ───────── */
 .pads {
     display: grid;
@@ -1529,6 +1571,100 @@ input[type=range]::-moz-range-thumb {
 :root[data-motion=reduced] *::after {
     animation: none !important;
     transition: none !important
+}
+
+/* ───────── light theme ───────── */
+:root[data-theme=light] {
+    color-scheme: light;
+    --bg: #f4f4f7;
+    --panel: #fff;
+    --panel-2: #ececf1;
+    --line: rgba(0, 0, 0, .09);
+    --line-2: rgba(0, 0, 0, .18);
+    --fg: #16161a;
+    --muted: #6a6a76;
+    --ok: #12805a;
+    --warn: #a96a0f;
+    --danger: #d12f48;
+}
+
+:root[data-theme=light] header {
+    background: rgba(244, 244, 247, .78)
+}
+
+:root[data-theme=light] .logo img {
+    content: url("Silence-logo-dark.png")
+}
+
+/* swap if your logo files are the other way round */
+:root[data-theme=light] .links a:hover {
+    background: rgba(0, 0, 0, .05)
+}
+
+:root[data-theme=light] .links a.on {
+    background: rgba(0, 0, 0, .07)
+}
+
+:root[data-theme=light] .hero h1,
+:root[data-theme=light] .head h1,
+:root[data-theme=light] .prose>h1 {
+    background-image: linear-gradient(180deg, #16161a 30%, #6a6a76)
+}
+
+:root[data-theme=light] .btn {
+    background: rgba(0, 0, 0, .04)
+}
+
+:root[data-theme=light] .btn.primary {
+    color: #fff
+}
+
+:root[data-theme=light] .btn.primary:hover {
+    background: #000;
+    border-color: #000
+}
+
+:root[data-theme=light] .chip.on,
+:root[data-theme=light] .seg button.on {
+    color: #fff
+}
+
+:root[data-theme=light] .panel {
+    background: var(--panel)
+}
+
+:root[data-theme=light] input::placeholder,
+:root[data-theme=light] textarea::placeholder {
+    color: #9a9aa6
+}
+
+:root[data-theme=light] .art {
+    background: var(--panel-2)
+}
+
+:root[data-theme=light] .art::after {
+    background: linear-gradient(180deg, transparent 55%, rgba(255, 255, 255, .9))
+}
+
+:root[data-theme=light] .art b {
+    color: rgba(0, 0, 0, .7)
+}
+
+:root[data-theme=light] .item:hover {
+    background: rgba(0, 0, 0, .03)
+}
+
+:root[data-theme=light] .msg code {
+    background: rgba(0, 0, 0, .06)
+}
+
+/* the game player stays dark so games look right */
+:root[data-theme=light] .player {
+    --fg: #ececf1;
+    --muted: #767683;
+    --line: rgba(255, 255, 255, .07);
+    --line-2: rgba(255, 255, 255, .15);
+    color: #ececf1
 }
 
 /* ───────── disguise: typing test (pages/disguise.html) ─────────

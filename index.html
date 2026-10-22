@@ -340,6 +340,27 @@
             animation: none !important;
             transition: none !important
         }
+
+        :root[data-theme=light] {
+            color-scheme: light;
+            --bg: #f4f4f7;
+            --panel: #fff;
+            --line: rgba(0, 0, 0, .09);
+            --fg: #16161a;
+            --muted: #6a6a76;
+        }
+
+        :root[data-theme=light] .mark {
+            background: linear-gradient(180deg, #16161a 25%, #8a8a96 115%);
+            -webkit-background-clip: text;
+            background-clip: text;
+        }
+
+        :root[data-theme=light] .btn,
+        :root[data-theme=light] .card code {
+            background: rgba(0, 0, 0, .04);
+            border-color: rgba(0, 0, 0, .15);
+        }
     </style>
 </head>
 
@@ -499,11 +520,43 @@
                 lime: ["#b6e86b", "#5ce1c6"],
             };
             const DENSITY = { compact: "165px", comfortable: "210px", large: "280px" };
+            // page background: two glow colours per preset. "custom" uses an image url.
+            const BGS = {
+                none: null,
+                aurora: ["#5ce1c6", "#8b7cff"],
+                sunset: ["#ff7aa8", "#f3b562"],
+                ocean: ["#5cb8ff", "#5ce1c6"],
+                midnight: ["#4a3fd8", "#0e8fb8"],
+            };
+            const IDLE_OPTS = [0, 1, 2, 5, 10, 15, 30];          // minutes, 0 = off
+            // only plain http(s) urls: no quotes, brackets or spaces, so it can't break out of css url("")
+            const okBgUrl = u => typeof u === "string" && u.length <= 500 && /^https?:\/\/[^\s"'()<>\\]+$/i.test(u);
+            function bgCss(s) {
+                if (s.bg === "custom" && s.bgUrl)
+                    return `linear-gradient(color-mix(in srgb, var(--bg) 70%, transparent), color-mix(in srgb, var(--bg) 70%, transparent)), url("${s.bgUrl}")`;
+                const c = BGS[s.bg];
+                if (!c) return "";
+                return `radial-gradient(900px circle at 15% -10%, color-mix(in srgb, ${c[0]} 34%, transparent), transparent 60%), ` +
+                    `radial-gradient(800px circle at 95% 110%, color-mix(in srgb, ${c[1]} 28%, transparent), transparent 60%)`;
+            }
+            // checks the url really loads as an image before saving it
+            function bgFromUrl(u) {
+                u = String(u || "").trim();
+                if (u && !/^[a-z][a-z0-9+.-]*:/i.test(u)) u = "https://" + u;
+                return new Promise((resolve, reject) => {
+                    if (!okBgUrl(u)) return reject(new Error("not a valid image url"));
+                    const img = new Image();
+                    img.onload = () => resolve(u);
+                    img.onerror = () => reject(new Error("couldn't load that image"));
+                    img.src = u;
+                });
+            }
             const PANIC_URL = "https://www.google.com";
             const DEFAULTS = {
                 accent: "violet", density: "comfortable", motion: "full", title: "tempo · typing test", icon: "tempotype", customIcon: "",
                 panicOn: true, panicKey: "Backquote", panicUrl: PANIC_URL, panicBtn: false, cloakRedirect: true,
                 lockHidden: false, fresh: true,
+                theme: "dark", bg: "none", bgUrl: "", idleMin: 0,
             };
 
             // generic tab icons (original glyphs)
@@ -515,6 +568,9 @@
                 folder: svg('<path d="M3 8h9l3 3h14v16H3z" fill="#f2b84b"/>'),
                 calendar: svg('<rect x="4" y="6" width="24" height="22" rx="3" fill="#fff" stroke="#9aa0a6" stroke-width="1.6"/><path d="M4 12h24" stroke="#9aa0a6" stroke-width="1.6"/><path d="M10 3v5M22 3v5" stroke="#9aa0a6" stroke-width="2"/>'),
                 dot: svg('<circle cx="16" cy="16" r="9" fill="#9aa0a6"/>'),
+                classroom: svg('<rect x="3" y="5" width="26" height="20" rx="3" fill="#2e9e6b"/><circle cx="16" cy="13" r="3.2" fill="#fff"/><path d="M9.5 21c.8-3 3.2-4.4 6.5-4.4s5.7 1.4 6.5 4.4z" fill="#fff"/><rect x="6" y="26" width="20" height="2" rx="1" fill="#2e9e6b"/>'),
+                docs: svg('<path d="M8 3h11l6 6v20H8z" fill="#4285f4"/><path d="M19 3l6 6h-6z" fill="#a8c7fa"/><path d="M12 15h10M12 19h10M12 23h6" stroke="#fff" stroke-width="1.8"/>'),
+                drive: svg('<path d="M11 4h10l9 15H20z" fill="#fbbc04"/><path d="M11 4L2 19l5 9 9-15z" fill="#0f9d58"/><path d="M7 28h18l5-9H12z" fill="#4285f4"/>'),
             };
 
             // keys you type while using the site can't be the panic key
@@ -555,6 +611,10 @@
                     cloakRedirect: bool(s.cloakRedirect, DEFAULTS.cloakRedirect),
                     lockHidden: bool(s.lockHidden, DEFAULTS.lockHidden),
                     fresh: bool(s.fresh, DEFAULTS.fresh),
+                    theme: s.theme === "light" ? "light" : "dark",
+                    bg: (Object.hasOwn(BGS, s.bg) || s.bg === "custom") ? s.bg : "none",
+                    bgUrl: okBgUrl(s.bgUrl) ? s.bgUrl : "",
+                    idleMin: IDLE_OPTS.includes(s.idleMin) ? s.idleMin : 0,
                 };
             };
             const read = () => {
@@ -573,23 +633,26 @@
             };
             function apply() {
                 const s = cfg = read(), [a, b] = PRESETS[s.accent];
+                const disguised = document.body.classList.contains("locked");
+                const light = !disguised && s.theme === "light";          // the typing test always stays dark
+                const bg = disguised ? "" : bgCss(s);
+                const custom = !disguised && s.bg === "custom" && !!s.bgUrl;
                 for (const root of roots()) {
                     root.style.setProperty("--accent", a);
                     root.style.setProperty("--accent2", b);
                     root.style.setProperty("--card-min", DENSITY[s.density]);
                     root.dataset.motion = s.motion;
+                    root.dataset.theme = light ? "light" : "dark";
+                    const set = (k, v) => v ? root.style.setProperty(k, v) : root.style.removeProperty(k);
+                    set("--page-bg", bg);
+                    set("--page-bg-size", custom && "cover");
+                    set("--page-bg-pos", custom && "center");
+                    set("--page-bg-att", custom && "fixed");
                 }
-                const disguised = document.body.classList.contains("locked");
                 document.title = disguised ? DEFAULTS.title : (s.title.trim() || pageTitle);
-                let possibleICON = disguised ? ICONS.tempotype : iconHref(s);
-                // A safer, case-insensitive way to check the current icon name
-                console.log("Current icon:", s.icon, "Dark mode:", window.isDarkMode);
-
-                if (s.icon !== "custom" && window.isDarkMode) {
-                    possibleICON = "/Silence-logo.png"; // Matches your capitalized file scheme
-                }
-
-                $("#icon").href = possibleICON;
+                let icon = disguised ? ICONS.tempotype : iconHref(s);
+                if (!disguised && s.icon === "none" && window.isDarkMode) icon = "/Silence-logo.png";
+                $("#icon").href = icon;
                 document.body.classList.toggle("panicbtn", s.panicBtn);
             }
             // upload: shrink to a 64x64 PNG so it stays small in localStorage
@@ -638,7 +701,7 @@
             }
             window.silence = {
                 read, write, apply, presets: PRESETS, defaults: DEFAULTS, icons: Object.keys(ICONS),
-                keyLabel, keyOk, lock, unlock, panic, cloak, refresh, iconFromFile, iconFromUrl, setCustomIcon, info: () => ({ ref: lastRef, sha: /^[0-9a-f]{40}$/i.test(lastRef) }),
+                keyLabel, keyOk, lock, unlock, panic, cloak, refresh, iconFromFile, iconFromUrl, bgFromUrl, setCustomIcon, info: () => ({ ref: lastRef, sha: /^[0-9a-f]{40}$/i.test(lastRef) }),
             };
             apply();
             // ads must not rename the tab: put the real title back whenever something changes it
@@ -660,6 +723,7 @@
                 return memUnlocked;
             };
             function unlock() {
+                touch();
                 memUnlocked = true;
                 try { sessionStorage.setItem(GATE, "1"); } catch { }
                 document.body.classList.remove("locked");
@@ -716,10 +780,30 @@
             addEventListener("keydown", hotkey);
             $("#panic").addEventListener("click", panic);
             document.addEventListener("visibilitychange", () => { if (document.hidden && cfg.lockHidden && isUnlocked()) lock(); });
+            /* ───────── idle auto-lock ─────────
+   Counts mouse / keyboard / touch on the shell and on every page. Games run on another
+   origin so their input is invisible to us: while a game or the soundboard has focus (and the
+   tab is visible) we treat the user as active instead of locking mid-game. */
+            let lastInput = Date.now();
+            const touch = () => { lastInput = Date.now(); };
+            const watch = doc => {
+                for (const ev of ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"])
+                    doc.addEventListener(ev, touch, { passive: true, capture: true });
+            };
+            watch(document);
+            setInterval(() => {
+                if (!cfg.idleMin || !isUnlocked()) return;
+                try {
+                    const d = pages.get(current)?.el.contentDocument;
+                    if (!document.hidden && d?.activeElement?.tagName === "IFRAME") touch();
+                } catch { }
+                if (Date.now() - lastInput >= cfg.idleMin * 60000) lock();
+            }, 5000);
 
             /* ───────── fetching ───────── */
+            // "#/index?play=slope" -> page "index" (the query is read by the page itself)
             const pageFromHash = () => {
-                const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+                const h = decodeURIComponent(location.hash.replace(/^#\/?/, "")).split("?")[0];
                 return /^[\w-]+$/.test(h) ? h : CONFIG.home;
             };
             /* jsDelivr caches a branch (@main) for hours. With "fresh" on we ask GitHub which commit
@@ -809,6 +893,7 @@
             }
 
             function wire(doc) {
+                watch(doc);
                 // keep navigation inside the shell
                 doc.addEventListener("click", e => {
                     const a = e.target.closest && e.target.closest("a[href]");
@@ -884,6 +969,7 @@
                 apply();
                 setState("ready");
                 try { el.contentWindow.focus(); } catch { }
+                try { el.contentWindow.dispatchEvent(new Event("silence:route")); } catch { }
                 if (name !== "disguise") idle(preload);
             }
 
