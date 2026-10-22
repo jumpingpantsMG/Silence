@@ -40,6 +40,101 @@ function createUpdateOverlay() {
     document.body.appendChild(overlay);
 }
 
+function parseMarkdown(md) {
+    // Step 0: Normalize line endings so all regexes work regardless of CDN response encoding
+    md = md.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // Step 1a: Inline triple-backtick  ```word```  → inline code
+    // Must run BEFORE block fenced-code regex, otherwise ```index.html``` is parsed as
+    // a fenced block with language "index" and body ".html"
+    const inlineCodes = [];
+    md = md.replace(/```([^`\n]+)```/g, (_, code) => {
+        const escaped = code.trim()
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const idx = inlineCodes.length;
+        inlineCodes.push(`<code>${escaped}</code>`);
+        return `\x00INLINE${idx}\x00`;
+    });
+
+    // Step 1b: Extract & protect fenced code blocks (escape HTML inside them)
+    const codeBlocks = [];
+    md = md.replace(/```[\w]*\n([\s\S]*?)```/g, (_, code) => {
+        const escaped = code.trim()
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const idx = codeBlocks.length;
+        codeBlocks.push(`<pre><code>${escaped}</code></pre>`);
+        return `\x00CODE${idx}\x00`;
+    });
+
+    // Step 2: Extract & protect single-backtick inline code
+    md = md.replace(/`([^`\n]+)`/g, (_, code) => {
+        const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const idx = inlineCodes.length;
+        inlineCodes.push(`<code>${escaped}</code>`);
+        return `\x00INLINE${idx}\x00`;
+    });
+
+    // Step 3: Process markdown — raw HTML tags are left intact
+    let html = md
+        .replace(/^### (.+?)[ \t]*$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+?)[ \t]*$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+?)[ \t]*$/gm, '<h1>$1</h1>')
+        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+        .replace(/^[ \t]*---[ \t]*$/gm, '<hr>')
+        .replace(/^\s*[-*+] (.+)$/gm, '<li>$1</li>')
+        .replace(/^\s*\d+\. (.+)$/gm, '<li>$1</li>')
+        // Images before links
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" style="max-width:100%;">')
+        // Markdown links
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+        // Plain bare URLs — CRITICAL: use (?<!=") to skip URLs already inside any HTML attribute value
+        .replace(/(?<!=["'])(https?:\/\/[^\s<>"')\]]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Step 3b: GFM tables — must run before paragraph wrapping
+    html = html.replace(/((?:^[|].+\n)+)/gm, tableBlock => {
+        const rows = tableBlock.trim().split('\n');
+        if (rows.length < 2) return tableBlock;
+        const isSeparator = r => /^[|\s:?-]+$/.test(r);
+        // Find separator row
+        let sepIdx = rows.findIndex(isSeparator);
+        if (sepIdx < 1) return tableBlock;
+        const parseRow = (r, tag) =>
+            '<tr>' + r.replace(/^\||\|$/g, '').split('|')
+                .map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+        const thead = rows.slice(0, sepIdx).map(r => parseRow(r, 'th')).join('');
+        const tbody = rows.slice(sepIdx + 1).map(r => parseRow(r, 'td')).join('');
+        return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+    });
+
+    // Step 4: Wrap loose text in <p>, pass HTML blocks through untouched
+    html = html
+        .replace(/\n{2,}/g, '\n\n')
+        .split('\n\n')
+        .map(block => {
+            block = block.trim();
+            if (!block) return '';
+            // Pass through HTML tags, code placeholders, and hr/headings
+            if (/^<(h[1-6]|pre|blockquote|hr|ul|ol|div|p|img|table|figure|a)[\s>]/.test(block)) return block;
+            if (block.startsWith('\x00CODE') || block.startsWith('\x00INLINE')) return block;
+            if (block.includes('<li>')) return `<ul>${block}</ul>`;
+            return `<p>${block.replace(/\n/g, '<br>')}</p>`;
+        })
+        .join('\n');
+
+    // Step 5: Restore code blocks and inline code
+    codeBlocks.forEach((cb, i) => { html = html.split(`\x00CODE${i}\x00`).join(cb); });
+    inlineCodes.forEach((ic, i) => { html = html.split(`\x00INLINE${i}\x00`).join(ic); });
+
+    // Step 6: Ensure all <a> tags that somehow lack target get it
+    html = html.replace(/<a\s+href="([^"]+)"(?![^>]*target=)/g,
+        '<a href="$1" target="_blank" rel="noopener noreferrer"');
+
+    return html
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
     const fragment = document.createRange().createContextualFragment(navbar);
 
