@@ -261,6 +261,21 @@
             </section>
 
             <section class="panel">
+                <h2>data</h2>
+                <div class="row">
+                    <div>
+                        <div class="t">Download or upload settings</div>
+                        <div class="d">Save your preferences to a JSON file or restore them from a backup.</div>
+                    </div>
+                    <div class="actions" style="margin-top:0">
+                        <button class="btn sm" id="Download" type="button">Download</button>
+                        <button class="btn sm" id="Upload" type="button">Upload</button>
+                        <input id="uploadFile" type="file" accept=".json,application/json" hidden>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel">
                 <h2>reset</h2>
                 <div class="row">
                     <div>
@@ -323,6 +338,223 @@
                 S.write(cur); S.apply(); sync();
                 if (!quiet) toast("saved");
             }
+
+            const encoder = new TextEncoder();
+            const decoder = new TextDecoder();
+
+            function generateKey() {
+                const chars =
+                    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+                const random = crypto.getRandomValues(new Uint8Array(1));
+                const length = 16 + (random[0] % 17);
+
+                while (true) {
+                    const bytes = crypto.getRandomValues(new Uint8Array(length));
+
+                    const key = Array.from(
+                        bytes,
+                        byte => chars[byte % chars.length]
+                    ).join("");
+
+                    if (!key.includes("af1")) {
+                        return key;
+                    }
+                }
+            }
+
+            async function deriveKey(password, salt) {
+                const keyMaterial = await crypto.subtle.importKey(
+                    "raw",
+                    encoder.encode(password),
+                    "PBKDF2",
+                    false,
+                    ["deriveKey"]
+                );
+
+                return crypto.subtle.deriveKey(
+                    {
+                        name: "PBKDF2",
+                        salt,
+                        iterations: 310000,
+                        hash: "SHA-256"
+                    },
+                    keyMaterial,
+                    {
+                        name: "AES-GCM",
+                        length: 256
+                    },
+                    false,
+                    ["encrypt", "decrypt"]
+                );
+            }
+
+            function toBase64(bytes) {
+                let binary = "";
+
+                for (const byte of bytes) {
+                    binary += String.fromCharCode(byte);
+                }
+
+                return btoa(binary);
+            }
+
+            function fromBase64(base64) {
+                const binary = atob(base64);
+
+                return Uint8Array.from(
+                    binary,
+                    char => char.charCodeAt(0)
+                );
+            }
+
+            async function encryptBackup(backup) {
+                const key = generateKey();
+
+                const salt = crypto.getRandomValues(new Uint8Array(16));
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+
+                const cryptoKey = await deriveKey(key, salt);
+
+                const plaintext = encoder.encode(JSON.stringify(backup));
+
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: "AES-GCM", iv },
+                    cryptoKey,
+                    plaintext
+                );
+
+                // Store salt + IV + encrypted data together.
+                const encryptedBytes = new Uint8Array(encrypted);
+
+                const payload = new Uint8Array(
+                    salt.length + iv.length + encryptedBytes.length
+                );
+
+                payload.set(salt, 0);
+                payload.set(iv, salt.length);
+                payload.set(encryptedBytes, salt.length + iv.length);
+
+                // Format: key + af1 + Base64(salt + IV + ciphertext)
+                return `${key}af1${toBase64(payload)}`;
+            }
+
+            async function decryptBackup(encryptedBackup) {
+                const separator = encryptedBackup.indexOf("af1");
+
+                if (separator === -1) {
+                    throw new Error("Invalid backup format: missing af1 separator.");
+                }
+
+                const key = encryptedBackup.slice(0, separator);
+                const encodedPayload = encryptedBackup.slice(separator + 3);
+
+                if (key.length < 16 || key.length > 32 || key.includes("af1")) {
+                    throw new Error("Invalid encryption key.");
+                }
+
+                const payload = fromBase64(encodedPayload);
+
+                // 16-byte salt + 12-byte IV + at least 16-byte GCM tag.
+                if (payload.length < 44) {
+                    throw new Error("Invalid or incomplete encrypted backup.");
+                }
+
+                const salt = payload.slice(0, 16);
+                const iv = payload.slice(16, 28);
+                const ciphertext = payload.slice(28);
+
+                const cryptoKey = await deriveKey(key, salt);
+
+                const decrypted = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv },
+                    cryptoKey,
+                    ciphertext
+                );
+
+                return JSON.parse(decoder.decode(decrypted));
+            }
+
+            $("#Download").addEventListener("click", async () => {
+                try {
+                    const backup = {
+                        app: "Silence",
+                        version: 1,
+                        settings: S.read()
+                    };
+
+                    const encrypted = await encryptBackup(backup);
+                    const blob = new Blob([encrypted], {
+                        type: "text/plain"
+                    });
+
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+
+                    link.href = url;
+                    link.download = `silence-settings-${new Date()
+                        .toISOString().slice(0, 10)}.json`;
+
+                    link.click();
+
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    toast("encrypted settings downloaded");
+                } catch (err) {
+                    toast(
+                        err instanceof Error
+                            ? `download failed: ${err.message}`
+                            : "download failed"
+                    );
+                }
+            });
+
+            $("#Upload").addEventListener("click", () => {
+                $("#uploadFile").click();
+            });
+
+            $("#uploadFile").addEventListener("change", async e => {
+                const input = e.currentTarget;
+                const file = input.files[0];
+
+                if (!file) return;
+
+                try {
+                    if (file.size > 256000) {
+                        throw new Error("file is too large");
+                    }
+
+                    const encrypted = await file.text();
+                    const backup = await decryptBackup(encrypted);
+
+                    if (
+                        !backup ||
+                        typeof backup !== "object" ||
+                        Array.isArray(backup) ||
+                        backup.app !== "Silence" ||
+                        backup.version !== 1 ||
+                        !backup.settings ||
+                        typeof backup.settings !== "object" ||
+                        Array.isArray(backup.settings)
+                    ) {
+                        throw new Error("not a valid Silence settings backup");
+                    }
+
+                    S.write(backup.settings);
+                    S.apply();
+                    cur = S.read();
+                    sync();
+
+                    toast("settings uploaded");
+                } catch (err) {
+                    toast(
+                        err instanceof Error
+                            ? `upload failed: ${err.message}`
+                            : "upload failed"
+                    );
+                } finally {
+                    input.value = "";
+                }
+            });
 
             sw.addEventListener("click", e => { const b = e.target.closest(".swatch"); if (b) save({ accent: b.dataset.v }); });
             $("#density").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ density: b.dataset.v }); });
