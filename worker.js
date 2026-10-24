@@ -110,6 +110,7 @@ async function admin(request, env, url) {
 
     const parts = url.pathname.split("/").filter(Boolean); // ["api","admin","submissions",":id"]
     if (parts[2] === "global") return adminGlobal(request, env, parts);
+    if (parts[2] === "announcement") return adminAnnouncement(request, env);
     if (parts[2] !== "submissions") return json({ error: "not found" }, 404);
     const id = parts[3] ? decodeURIComponent(parts[3]) : null;
     if (id && !id.startsWith("sub:")) return json({ error: "bad id" }, 400);
@@ -1163,6 +1164,41 @@ async function chatMod(request, env, s, p) {
 const adminGlobal = (request, env, parts) =>
     chatMod(request, env, { u: "admin", a: true }, parts.slice(3)); // parts = ["api","admin","global",...]
 
+/* ───────── announcement ───────── */
+const ANN_KEY = "announce:current";
+let annMem = null; // { v, exp }: remembered for 30s so page loads share one KV read
+async function readAnnouncement(env) {
+    if (annMem && Date.now() < annMem.exp) return annMem.v;
+    const v = (await env.FORMS.get(ANN_KEY, "json")) || {};
+    annMem = { v, exp: Date.now() + 30000 };
+    return v;
+}
+async function announcement(env) {            // public: only what the banner needs
+    const { id, text, level } = await readAnnouncement(env);
+    return json(text ? { id, text, level } : {}, 200, { "cache-control": "public, max-age=30" });
+}
+async function adminAnnouncement(request, env) {
+    if (request.method === "GET") return json(await readAnnouncement(env));
+    if (request.method === "DELETE") {
+        await env.FORMS.delete(ANN_KEY); annMem = null;
+        return json({ ok: true });
+    }
+    if (request.method === "PUT") {
+        let body;
+        try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+        const text = clean(body?.text, 300).replace(/\s+/g, " ");
+        if (!text) return json({ error: "message required" }, 400);
+        const level = body?.level === "warn" ? "warn" : "info";
+        const hours = Math.min(720, Math.max(0, Math.floor(Number(body?.hours) || 0))); // 0 = never expires
+        const now = Date.now();
+        const rec = { id: now.toString(36), text, level, ts: now, until: hours ? now + hours * 3600000 : 0 };
+        await env.FORMS.put(ANN_KEY, JSON.stringify(rec), hours ? { expirationTtl: hours * 3600 } : undefined);
+        annMem = null;
+        return json({ ok: true });
+    }
+    return json({ error: "method not allowed" }, 405);
+}
+
 /* ───────── router ───────── */
 export default {
     async fetch(request, env) {
@@ -1173,6 +1209,7 @@ export default {
                 if (url.pathname === "/api/forms") {
                     return request.method === "POST" ? await submitForm(request, env) : json({ error: "method not allowed" }, 405);
                 }
+                if (url.pathname === "/api/announcement") return request.method === "GET" ? await announcement(env) : json({ error: "method not allowed" }, 405);
                 if (url.pathname.startsWith("/api/admin/")) return await admin(request, env, url);
                 if (url.pathname === "/api/chat") return await ai(request, env);
                 if (url.pathname.startsWith("/api/global/")) return await globalChat(request, env, url);

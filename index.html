@@ -907,9 +907,9 @@
 
                     e.preventDefault();
                     const name = href.split("#")[0].split("?")[0].split("/").pop().replace(/\.html$/i, "") || CONFIG.home;
-                    const next = name === CONFIG.home ? "" : `#/${name}`;
-                    if ((location.hash || "") === next) return;
-                    location.hash = next;
+                    const next = name === CONFIG.home ? "#/" : `#/${name}`;
+                    if ((location.hash || "#/") === next) return;
+                    location.replace(location.pathname + location.search + next);
                 });
                 doc.addEventListener("keydown", hotkey);
             }
@@ -999,6 +999,8 @@
             show(pageFromHash());
         })();
     </script>
+    <script src="js/Tour.js"></script>
+    <script src="js/Announce.js"></script>
 </body>
 
 </html>

@@ -276,6 +276,17 @@
             </section>
 
             <section class="panel">
+                <h2>tour</h2>
+                <div class="row">
+                    <div>
+                        <div class="t">Site tour</div>
+                        <div class="d">Walk through the site again.</div>
+                    </div>
+                    <button class="btn sm" id="tour" type="button">start</button>
+                </div>
+            </section>
+
+            <section class="panel">
                 <h2>reset</h2>
                 <div class="row">
                     <div>
@@ -562,6 +573,7 @@
             let td;
             $("#title").addEventListener("input", e => { clearTimeout(td); td = setTimeout(() => save({ title: e.target.value }), 250); });
             $("#lock").addEventListener("click", () => S.lock());
+            $("#tour").addEventListener("click", () => S.tour?.start());
 
             document.querySelectorAll("#titles button").forEach(b => b.addEventListener("click", () => { $("#title").value = b.dataset.t; save({ title: b.dataset.t }); }));
             $("#icon").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ icon: b.dataset.v }); });

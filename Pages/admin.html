@@ -30,6 +30,37 @@
 
     <!-- dashboard -->
     <main class="wrap mid stack" id="dash" hidden>
+        <section class="panel" id="ann" style="margin-bottom:22px">
+            <h2>announcement</h2>
+            <div class="field">
+                <label for="ann-text">Message</label>
+                <textarea id="ann-text" maxlength="300" rows="3" style="min-height:80px"
+                    placeholder="shown to everyone on the site"></textarea>
+                <div class="hint"><span id="ann-state"></span><span id="ann-ctr">0 / 300</span></div>
+            </div>
+            <div class="grid2 field">
+                <div class="field" style="margin:0">
+                    <label for="ann-level">Style</label>
+                    <select id="ann-level">
+                        <option value="info">info</option>
+                        <option value="warn">warning</option>
+                    </select>
+                </div>
+                <div class="field" style="margin:0">
+                    <label for="ann-hours">Expires</label>
+                    <select id="ann-hours">
+                        <option value="1">1 hour</option>
+                        <option value="24" selected>24 hours</option>
+                        <option value="168">7 days</option>
+                        <option value="0">never</option>
+                    </select>
+                </div>
+            </div>
+            <div class="actions">
+                <button class="btn primary sm" id="ann-post" type="button">publish</button>
+                <button class="btn sm danger" id="ann-clear" type="button">remove</button>
+            </div>
+        </section>
         <section class="head" style="padding-bottom:20px">
             <h1>submissions</h1>
         </section>
@@ -154,7 +185,7 @@
                     cursor = d.cursor;
                 }
                 items = all;
-                show(true); render();
+                show(true); render(); loadAnn().catch(() => { });
             }
 
             function render() {
@@ -232,6 +263,27 @@
                     await api("/submissions/" + encodeURIComponent(openId), { method: "DELETE" });
                     items = items.filter(i => i.id !== openId); render(); closeDrawer(); toast("deleted");
                 } catch (ex) { toast(ex.message, true); }
+            });
+
+            async function loadAnn() {
+                const d = await api("/announcement");
+                $("#ann-text").value = d.text || "";
+                $("#ann-level").value = d.level || "info";
+                $("#ann-ctr").textContent = `${$("#ann-text").value.length} / 300`;
+                $("#ann-state").textContent = d.text ? "live" + (d.until ? " until " + new Date(d.until).toLocaleString() : "") : "nothing live";
+            }
+            $("#ann-text").addEventListener("input", e => { $("#ann-ctr").textContent = `${e.target.value.length} / 300`; });
+            $("#ann-post").addEventListener("click", async () => {
+                const text = $("#ann-text").value.trim();
+                if (!text) return toast("write a message first", true);
+                try {
+                    await api("/announcement", { method: "PUT", body: JSON.stringify({ text, level: $("#ann-level").value, hours: Number($("#ann-hours").value) }) });
+                    await loadAnn(); toast("published");
+                } catch (ex) { toast(ex.message, true); }
+            });
+            $("#ann-clear").addEventListener("click", async () => {
+                try { await api("/announcement", { method: "DELETE" }); await loadAnn(); toast("removed"); }
+                catch (ex) { toast(ex.message, true); }
             });
 
             /* ───────── boot ───────── */
