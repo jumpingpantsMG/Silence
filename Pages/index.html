@@ -10,6 +10,36 @@
     <link rel="icon" href="../Silence-logo-dark.png" type="image/png">
     <link rel="stylesheet" href="../style.css">
     <script src="../js/Navbar.js"></script>
+    <style>
+        .rdlg {
+            background: var(--panel);
+            color: var(--fg);
+            border: 1px solid var(--line-2);
+            border-radius: 20px;
+            padding: 22px;
+            width: min(460px, calc(100vw - 28px));
+            box-shadow: 0 30px 80px -20px #000;
+        }
+
+        .rdlg::backdrop {
+            background: rgba(0, 0, 0, .7);
+        }
+
+        .rdlg h3 {
+            font-size: 1.05rem;
+            font-weight: 500;
+        }
+
+        .rdlg .r-game {
+            margin: 4px 0 16px;
+            color: var(--muted);
+            font-size: .82rem;
+        }
+
+        .rdlg textarea {
+            min-height: 90px;
+        }
+    </style>
 </head>
 
 <body>
@@ -89,6 +119,31 @@
         <div class="pframe" id="pframe">
             <div class="spin" id="spin"></div>
         </div>
+        <dialog class="rdlg" id="rdlg" aria-labelledby="r-title">
+            <h3 id="r-title">what's wrong?</h3>
+            <p class="r-game" id="r-game"></p>
+
+            <div class="chips" id="r-reasons" role="group" aria-label="What went wrong">
+                <button class="chip" type="button">won't load / blank screen</button>
+                <button class="chip" type="button">crashes or freezes</button>
+                <button class="chip" type="button">controls don't work</button>
+                <button class="chip" type="button">no sound</button>
+                <button class="chip" type="button">runs slow</button>
+                <button class="chip" type="button">something else</button>
+            </div>
+
+            <div class="field">
+                <label for="r-details">More details <span id="r-opt" style="opacity:.6">(optional)</span></label>
+                <textarea id="r-details" maxlength="400" rows="3"
+                    placeholder="what happened? what did you click or press?"></textarea>
+                <div class="hint"><span class="err" id="r-err"></span><span id="r-ctr">0 / 400</span></div>
+            </div>
+
+            <div class="actions">
+                <button class="btn primary" id="r-send" type="button">send report</button>
+                <button class="btn" id="r-cancel" type="button">cancel</button>
+            </div>
+        </dialog>
     </div>
 
     <!--
@@ -314,32 +369,64 @@
                 try { await navigator.clipboard.writeText(link); toast("link copied"); } catch { prompt("copy this link", link); }
             });
 
-            /* report: sends a bug report through the normal forms api (same 30s cooldown as the forms page) */
+            /* report: ask what's wrong, then send it as a bug report through the forms api */
             const LAST = "silence:lastForm";
-            $("#p-report").addEventListener("click", async e => {
+            const OTHER = "something else";
+            const rdlg = $("#rdlg"), rErr = $("#r-err"), rDet = $("#r-details"), rSend = $("#r-send");
+            let reporting = null, reason = "";
+
+            const cooldown = () => { try { return Math.max(0, 30000 - (Date.now() - +localStorage.getItem(LAST))); } catch { return 0; } };
+
+            function setReason(btn) {
+                reason = btn ? btn.textContent : "";
+                document.querySelectorAll("#r-reasons .chip").forEach(c => c.classList.toggle("on", c === btn));
+                $("#r-opt").hidden = reason === OTHER;           // "something else" needs details
+                rErr.textContent = "";
+            }
+            $("#r-reasons").addEventListener("click", e => { const b = e.target.closest(".chip"); if (b) setReason(b); });
+            rDet.addEventListener("input", () => { $("#r-ctr").textContent = `${rDet.value.length} / 400`; });
+            $("#r-cancel").addEventListener("click", () => rdlg.close());
+
+            $("#p-report").addEventListener("click", () => {
                 if (!current) return;
-                const btn = e.currentTarget;
-                let wait = 0;
-                try { wait = Math.max(0, 30000 - (Date.now() - +localStorage.getItem(LAST))); } catch { }
-                if (wait) return toast(`wait ${Math.ceil(wait / 1000)}s before reporting again`, true);
-                btn.disabled = true;
+                const w = cooldown();
+                if (w) return toast(`wait ${Math.ceil(w / 1000)}s before reporting again`, true);
+                reporting = current;                              // remember which game, even if the player changes
+                $("#r-game").textContent = reporting.name;
+                setReason(null);
+                rDet.value = ""; $("#r-ctr").textContent = "0 / 400";
+                rdlg.showModal();
+            });
+
+            rSend.addEventListener("click", async () => {
+                const g = reporting;
+                if (!g) return;
+                const details = rDet.value.trim();
+                if (!reason) { rErr.textContent = "pick what went wrong"; return; }
+                if (reason === OTHER && details.length < 5) { rErr.textContent = "tell us a bit more"; rDet.focus(); return; }
+                const w = cooldown();
+                if (w) { rErr.textContent = `wait ${Math.ceil(w / 1000)}s before reporting again`; return; }
+
+                rSend.disabled = true; rSend.textContent = "sending…"; rErr.textContent = "";
                 try {
                     const r = await fetch("/api/forms", {
                         method: "POST",
                         headers: { "content-type": "application/json" },
                         body: JSON.stringify({
                             type: "bug", name: "", contact: "", website: "",
-                            subject: current.name,
-                            message: `Reported from the player: "${current.name}" (${current.bucket}/${current.dir}) doesn't load or is broken.`,
+                            subject: g.name,
+                            // the reason comes first so the admin list preview is useful at a glance
+                            message: `${reason}${details ? " — " + details : ""}\n\ngame: ${g.bucket}/${g.dir}`,
                         }),
                     });
                     if (r.status === 429) throw new Error("too many reports, try again in a minute");
-                    if (!r.ok) throw new Error("couldn't send, try again");
+                    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "couldn't send, try again");
                     try { localStorage.setItem(LAST, Date.now()); } catch { }
+                    rdlg.close();
                     toast("thanks, reported");
                 } catch (ex) {
-                    toast(ex.message || "couldn't send, try again", true);
-                } finally { btn.disabled = false; }
+                    rErr.textContent = ex.message || "couldn't send, try again";   // inline: the dialog covers the toast
+                } finally { rSend.disabled = false; rSend.textContent = "send report"; }
             });
 
             /* ───────── share links: the shell fires "silence:route" whenever this page is shown ───────── */
@@ -353,6 +440,7 @@
 
             /* ───────── keys ───────── */
             addEventListener("keydown", e => {
+                if (rdlg.open) return;          // esc closes just the dialog
                 if (e.key === "Escape") { close(); q.blur(); return; }
                 if (player.classList.contains("open")) return;
                 if (e.key === "/" && document.activeElement !== q) { e.preventDefault(); q.focus(); }
