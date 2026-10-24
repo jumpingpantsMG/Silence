@@ -6,3 +6,4 @@ wrangler.toml
 .wrangler
 node_modules
 .github
+game

@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../style.css">
     <link rel="icon" href="../Silence-logo.png" type="image/png">
     <script src="../js/Navbar.js"></script>
+    <script src="../js/games.js"></script>
     <style>
         .gc {
             display: flex;
@@ -134,6 +135,35 @@
 
         .gc-m.adm {
             border: 1px solid rgba(255, 255, 255, .35);
+        }
+
+        .gc-m.mod {
+            border: 1px solid color-mix(in srgb, var(--accent, #8b7cff) 55%, transparent);
+        }
+
+        .gc-badge.mod {
+            color: var(--accent, #8b7cff);
+        }
+
+        .gc-log {
+            max-height: 50vh;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: .88em;
+        }
+
+        .gc-log>div {
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, .05);
+            overflow-wrap: anywhere;
+        }
+
+        .gc-log small {
+            display: block;
+            opacity: .65;
         }
 
         .gc-m.small {
@@ -396,12 +426,14 @@
                     <button class="linkish" id="c-edit" type="button" hidden>edit</button>
                     <button class="linkish" id="c-del" type="button" hidden>delete room</button>
                     <button class="linkish" id="c-wipe" type="button" hidden>wipe messages</button>
+                    <button class="linkish" id="c-modtools" type="button" hidden>mod tools</button>
                     <button class="linkish" id="c-alerts" type="button">alerts: popups</button>
                     <button class="linkish" id="c-muted" type="button" hidden>muted (0)</button>
                     <button class="linkish" id="c-back" type="button">← lobby</button>
                 </span>
             </div>
             <div class="gc-muted" id="c-mutedlist" hidden></div>
+            <div id="sg" hidden></div>
             <div class="gc-msgs" id="msgs" aria-live="polite"></div>
             <div class="gc-bar" id="c-reply" hidden><span id="c-reply-t"></span><button class="linkish" id="c-reply-x"
                     type="button">cancel</button></div>
@@ -452,6 +484,8 @@
             let token = load("silence:chatToken", "", sessionStorage);
             let user = load("silence:chatUser", "", sessionStorage);
             let isAdmin = load("silence:chatAdmin", false, sessionStorage);
+            let isMod = load("silence:chatMod", false, sessionStorage);   // moderator (CHAT_MODS)
+            const isStaff = () => isAdmin || isMod;
             let alerts = load("silence:chatAlerts", "popups");           // off | popups | system
             const passes = load("silence:roomPass", {}, sessionStorage);  // private-room passwords, this tab only
             let hidden = new Set(load("silence:chatHidden", []));         // messages hidden after a report
@@ -513,7 +547,7 @@
             const cancel = { label: "cancel", fn: c => c() };
             const field = (label, el) => [h("label", {}, label), el];
             const DURATIONS = [["1 hour", 60], ["24 hours", 1440], ["7 days", 10080], ["permanent", 0]];
-            const durSelect = () => h("select", {}, DURATIONS.map(([t, m]) => h("option", { value: m }, t)));
+            const durSelect = () => h("select", {}, DURATIONS.filter(([, m]) => isAdmin || (m > 0 && m <= 1440)).map(([t, m]) => h("option", { value: m }, t)));
 
             /* ── 1. gate ── */
             const gErr = t => { $("#g-err").textContent = t || ""; };
@@ -530,8 +564,8 @@
             async function login(u, pw) {
                 try {
                     const d = await post("/login", { username: u, password: pw, deviceId });
-                    token = d.token; user = d.username; isAdmin = !!d.isAdmin;
-                    store("silence:chatToken", token, sessionStorage); store("silence:chatUser", user, sessionStorage); store("silence:chatAdmin", isAdmin, sessionStorage);
+                    token = d.token; user = d.username; isAdmin = !!d.isAdmin; isMod = !!d.isMod;
+                    store("silence:chatToken", token, sessionStorage); store("silence:chatUser", user, sessionStorage); store("silence:chatAdmin", isAdmin, sessionStorage); store("silence:chatMod", isMod, sessionStorage);
                     $("#g-pw").value = ""; $("#g-pwbox").hidden = true;
                     await afterLogin();
                 } catch (e) { gErr(e.message); }
@@ -544,6 +578,7 @@
 
             function signOut(msg) {
                 token = ""; user = ""; isAdmin = false; room = null; items = []; v = ""; replyTo = null; pending = null;
+                window.SilenceGames?.leave();
                 for (const k of ["silence:chatToken", "silence:chatUser", "silence:chatAdmin"]) try { sessionStorage.removeItem(k); } catch { }
                 show("gate"); gErr(msg || "");
             }
@@ -567,9 +602,10 @@
             /* ── 2. lobby ── */
             function showLobby() {
                 room = null; clearTimeout(timer);
+                window.SilenceGames?.leave();
                 try { sessionStorage.removeItem("silence:chatWatch"); } catch { } // left the room: stop site-wide popups
                 show("lobby");
-                $("#l-who").replaceChildren("signed in as ", h("b", {}, user), isAdmin ? h("span", { class: "gc-badge" }, "admin") : "");
+                $("#l-who").replaceChildren("signed in as ", h("b", {}, user), isAdmin ? h("span", { class: "gc-badge" }, "admin") : isMod ? h("span", { class: "gc-badge mod" }, "mod") : "");
                 loadRooms();
             }
             $("#l-out").onclick = () => signOut();
@@ -655,10 +691,12 @@
                 $("#c-share").hidden = room.id === "general";
                 $("#c-edit").hidden = $("#c-del").hidden = !(room.id !== "general" && (isAdmin || isOwner()));
                 $("#c-wipe").hidden = !isAdmin;
+                $("#c-modtools").hidden = !isStaff();
                 $("#c-reply").hidden = true; $("#c-unmute").hidden = true; $("#c-status").textContent = "";
                 $("#q").disabled = false; $("#q").value = "";
                 paintMuted(); render(); poll(true); resetIdle();
-                if (isAdmin) loadAdminMutes();
+                if (isStaff()) loadAdminMutes();
+                window.SilenceGames?.enter(room);              // multiplayer games panel (js/games.js)
             }
             $("#c-back").onclick = () => { showLobby(); };
             $("#c-share").onclick = async () => {
@@ -752,8 +790,8 @@
                         if (mutedHere) return h("div", { class: "gc-m small" }, "muted user · ", act("show", () => { revealed.add(m.id); render(); }), " ", act("unmute", () => muteUser(m.n, false)));
                     }
                     const head = h("div", { class: "gc-h" }, h("b", {}, m.n),
-                        m.a ? h("span", { class: "gc-badge" }, "admin") : "",
-                        isAdmin && adminMuted.has(m.n.toLowerCase()) ? h("span", { class: "gc-badge" }, "muted") : "",
+                        m.a ? h("span", { class: "gc-badge" }, "admin") : m.mo ? h("span", { class: "gc-badge mod" }, "mod") : "",
+                        isStaff() && adminMuted.has(m.n.toLowerCase()) ? h("span", { class: "gc-badge" }, "muted") : "",
                         m.u ? h("span", { class: "gc-badge" }, "unmute request") : "",
                         h("span", {}, new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })),
                         m.e ? h("button", { class: "linkish", type: "button", title: "see edit history", onclick: () => showHistory(m) }, "edited") : "");
@@ -764,13 +802,14 @@
                     if (!own) acts.append(act("report", () => reportDialog(m)));
                     if (!own && !m.a) acts.append(act(muted.has(m.n.toLowerCase()) ? "unmute" : "mute user", () => muteUser(m.n, !muted.has(m.n.toLowerCase()))));
                     if (own && !m.u) acts.append(act("edit", () => editInline(m, el)));
-                    if (own || (isAdmin && !m.a)) acts.append(act("delete", async () => { try { await send_("DELETE", `/rooms/${room.id}/messages/${encodeURIComponent(m.id)}`); poll(true); } catch (e) { toast(e.message, true); } }));
+                    if (own || (isAdmin && !m.a) || (isMod && !m.a && !m.mo)) acts.append(act("delete", async () => { try { await send_("DELETE", `/rooms/${room.id}/messages/${encodeURIComponent(m.id)}`); poll(true); } catch (e) { toast(e.message, true); } }));
+                    if (isMod && !own && !m.a && !m.mo) acts.append(act(adminMuted.has(m.n.toLowerCase()) ? "mod unmute" : "mod mute", () => adminMuted.has(m.n.toLowerCase()) ? adminUnmute(m) : adminMuteDialog(m)));
                     if (isAdmin && !own && !m.a) {
                         acts.append(act("ban", () => banDialog(m)));
                         acts.append(act(adminMuted.has(m.n.toLowerCase()) ? "admin unmute" : "admin mute", () => adminMuted.has(m.n.toLowerCase()) ? adminUnmute(m) : adminMuteDialog(m)));
                     }
 
-                    const el = h("div", { class: "gc-m" + (own ? " me" : "") + (m.a ? " adm" : "") }, head,
+                    const el = h("div", { class: "gc-m" + (own ? " me" : "") + (m.a ? " adm" : m.mo ? " mod" : "") }, head,
                         m.rp ? h("div", { class: "gc-rp" }, h("b", {}, m.rp.n + ": "), m.rp.t) : "",
                         m.f ? fileEl(m.f) : "",
                         m.t ? h("p", { class: "gc-t" }, m.t) : "", acts);
@@ -825,6 +864,32 @@
                 }, cancel]);
             }
 
+            /* mod tools: reports + the log of who did what */
+            const when = ts => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+            const logLine = e => h("div", {},
+                h("b", {}, e.by), h("span", { class: "gc-badge" + (e.role === "mod" ? " mod" : "") }, e.role), ` ${e.act}${e.user ? " " + e.user : ""}`,
+                e.mins ? ` (${e.mins >= 1440 ? Math.round(e.mins / 144) / 10 + "d" : e.mins >= 60 ? Math.round(e.mins / 6) / 10 + "h" : e.mins + "m"})` : e.mins === 0 ? " (permanent)" : "",
+                e.reason ? h("small", {}, "reason: " + e.reason) : "", e.text ? h("small", {}, "message: " + e.text) : "",
+                h("small", {}, `${e.room ? "#" + e.room + " · " : ""}${when(e.ts)}`));
+            async function modTools() {
+                const list = h("div", { class: "gc-log" }, "loading…");
+                const tabs = h("div", { class: "gc-row" });
+                let which = "log";
+                async function load() {
+                    list.replaceChildren("loading…");
+                    try {
+                        const d = await api(which === "log" ? "/mod/log" : "/mod/reports");
+                        const rows = which === "log" ? d.items.map(logLine) : d.items.map(r => h("div", {}, h("b", {}, r.subject || "report"), h("p", { class: "gc-t", style: "white-space:pre-wrap;margin:4px 0" }, r.message || ""), h("small", {}, `${when(r.ts)}${r.status === "done" ? " · handled" : ""}`)));
+                        list.replaceChildren(...(rows.length ? rows : [h("div", {}, which === "log" ? "nothing logged yet (entries are kept for 30 days)." : "no reports.")]));
+                    } catch (e) { list.replaceChildren(e.message); }
+                }
+                const tab = (id, label) => h("button", { class: "btn", type: "button", onclick: () => { which = id; load(); } }, label);
+                tabs.append(tab("log", "mod log"), tab("reports", "reports"));
+                dialog("mod tools", [tabs, list], [{ label: "close", fn: c => c() }]);
+                load();
+            }
+            $("#c-modtools").onclick = modTools;
+
             /* staff tools */
             function banDialog(m) {
                 const type = h("select", {}, [["username", "username ban"], ["ip", "ip ban"], ["device", "device ban"]].map(([k, t]) => h("option", { value: k }, t)));
@@ -838,7 +903,7 @@
             }
             function adminMuteDialog(m) {
                 const dur = durSelect(), reason = h("input", { maxlength: 80, placeholder: "reason for mute…" });
-                dialog(`admin mute ${m.n}`, [h("p", { class: "gc-note" }, "this mutes them for everyone in the chat."), ...field("duration", dur), ...field("reason (optional)", reason)], [{
+                dialog(`${isAdmin ? "admin" : "mod"} mute ${m.n}`, [h("p", { class: "gc-note" }, "this mutes them for everyone in the chat." + (isAdmin ? "" : " mods can mute for up to 24 hours.")), ...field("duration", dur), ...field("reason (optional)", reason)], [{
                     label: "mute", primary: true, fn: async close => {
                         await post("/mod/mute", { room: room.id, id: m.id, minutes: Number(dur.value), reason: reason.value });
                         close(); await loadAdminMutes();
@@ -852,7 +917,7 @@
 
             /* ── popups for new messages ── */
             function popup(m) {
-                const el = h("div", { class: "pop" }, h("b", {}, (m.a ? "[admin] " : "") + m.n + " · " + (room.id === "general" ? "global" : room.name)), h("span", {}, m.t || "sent a file: " + (m.f?.name || "")));
+                const el = h("div", { class: "pop" }, h("b", {}, (m.a ? "[admin] " : m.mo ? "[mod] " : "") + m.n + " · " + (room.id === "general" ? "global" : room.name)), h("span", {}, m.t || "sent a file: " + (m.f?.name || "")));
                 const close = () => el.remove();
                 el.onclick = () => { const b = $("#msgs"); b.scrollTop = b.scrollHeight; $("#q").focus(); close(); };
                 $("#pops").append(el);

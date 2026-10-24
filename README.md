@@ -23,7 +23,7 @@ The Worker does two jobs: it serves the static site, and it runs a small API for
 ## Features
 
 - **Games**: served from a Cloudflare R2 public bucket.
-- **Forms**: requests, bug reports and feedback, stored in KV and managed from the admin page.
+- **Forms**: requests, bug reports, applications and feedback, stored in KV and managed from the admin page.
 - **AI**: a streaming chat page that talks to Gemini through the Worker, so the API key never reaches the browser.
 - **Global chat**: usernames, a global room plus user-made rooms (public, private or admin-only), replies, edits, file sharing, reports, and staff moderation.
 - **Soundboard**, **settings** and an **admin** page.

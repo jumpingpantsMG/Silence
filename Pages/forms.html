@@ -24,6 +24,7 @@
                 <button type="button" class="on" data-t="request" role="tab">game request</button>
                 <button type="button" data-t="bug" role="tab">bug report</button>
                 <button type="button" data-t="feedback" role="tab">feedback</button>
+                <button type="button" data-t="application" role="tab">application</button>
             </div>
 
             <div class="grid2 field">
@@ -83,7 +84,8 @@
                 request: { subject: "Game name or link", sPh: "e.g. Slope Rider", message: "Anything we should know?", mPh: "genre, where you played it, why you like it…", needSubject: true },
                 bug: { subject: "Which game or page?", sPh: "e.g. Drift Hunters", message: "What went wrong?", mPh: "what you did, what you expected, what happened instead…", needSubject: true },
                 feedback: { subject: "Subject (optional)", sPh: "", message: "What's on your mind?", mPh: "ideas, complaints, compliments…", needSubject: false },
-            };
+                application: { subject: "Name and contact?", sPh: "e.g. John Doe - johndoe@example.com", message: "Why should we pick you?", mPh: "experience, availability, anything else…", needSubject: true },
+            }
             let type = "request";
 
             function setType(t) {

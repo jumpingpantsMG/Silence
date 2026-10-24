@@ -21,6 +21,16 @@ id = "52114f3c8295410daec676a1c37e7a00"
    database_name = "silence-chat"
    database_id = "dbe36023-1aa1-499e-9ff5-bd5464ee6a6d"
 
+# Multiplayer games: one GameRoom Durable Object per chat room (game/room.js).
+# SQLite-backed classes are the ones the free plan allows.
+[[durable_objects.bindings]]
+name = "GAMES"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
 [observability]
 enabled = true
 

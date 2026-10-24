@@ -11,8 +11,12 @@
 // Secrets:                       ADMIN_TOKEN, GEMINI_API_KEY
 // Optional secrets:              CHAT_ADMINS = "alice:password1,bob:password2"  (extra chat staff)
 //                                CHAT_SECRET  signs chat sessions (defaults to ADMIN_TOKEN)
+// Durable Object:                GAMES (class GameRoom in game/room.js): multiplayer games inside chat rooms
+//   GET    /api/global/rooms/:id/game   websocket, forwarded to that room's GameRoom
 
-const TYPES = new Set(["request", "bug", "feedback"]);
+export { GameRoom } from "./game/room.js";   // the Durable Object class must be exported from the main module
+
+const TYPES = new Set(["request", "bug", "feedback", "application"]);
 const STATUSES = new Set(["new", "done"]);
 const GEMINI_URL =
     "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
@@ -409,6 +413,18 @@ function staffList(env) {
     return list;
 }
 const findStaff = (env, name) => staffList(env).find(([n]) => n.toLowerCase() === name.toLowerCase());
+// moderators: CHAT_MODS = "name:password,name2:password2". An admin name always wins over a mod of the same name.
+function modList(env) {
+    const list = [];
+    for (const p of (env.CHAT_MODS || "").split(",")) {
+        const i = p.indexOf(":");
+        const name = p.slice(0, i).trim(), pw = p.slice(i + 1).trim();
+        if (i > 0 && /^[\p{L}\p{N}_.\-]{2,32}$/u.test(name) && pw) list.push([name, pw]);
+    }
+    return list;
+}
+const findMod = (env, name) => (findStaff(env, name) ? undefined : modList(env).find(([n]) => n.toLowerCase() === name.toLowerCase()));
+const isStaff = (s) => !!(s && (s.a || s.m));        // admin or mod
 const secretOf = (env) => env.CHAT_SECRET || env.ADMIN_TOKEN || "";
 
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -548,14 +564,14 @@ async function chatGate(request, env, url) {
     if (!secretOf(env)) return json({ error: "chat is not configured" }, 503);
     const user = cleanUser(url.searchParams.get("username"));
     if (!user) return json({ error: "usernames can use letters, numbers, spaces, _ . - ' and must be 2-32 characters" }, 400);
-    const staff = findStaff(env, user);
-    if (!staff && (/admin/i.test(user) || blockedWord(user))) return json({ error: "that username breaks the chat rules" }, 400);
+    const staff = findStaff(env, user), mod = findMod(env, user);
+    if (!staff && !mod && (/admin/i.test(user) || blockedWord(user))) return json({ error: "that username breaks the chat rules" }, 400);
     const dev = url.searchParams.get("device") || "";
     if (/^[\w-]{8,64}$/.test(dev) && !staff) {
         const ban = await banOf(env, user, await ipHash(clientIp(request), env), await devHash(dev, env));
         if (ban) return banError(ban);
     }
-    return json({ ok: true, needsPassword: !!staff });
+    return json({ ok: true, needsPassword: !!(staff || mod) });
 }
 
 async function chatLogin(request, env) {
@@ -569,11 +585,11 @@ async function chatLogin(request, env) {
     const device = String(body?.deviceId || "");
     if (!user || !/^[\w-]{8,64}$/.test(device)) return json({ error: "bad username" }, 400);
 
-    const staff = findStaff(env, user);
-    if (staff) {
+    const staff = findStaff(env, user), mod = findMod(env, user), cred = staff || mod;
+    if (cred) {
         if (failsOf("sf:" + ip, 300000).length >= 10) return json({ error: "too many attempts, try later" }, 429);
         const given = await sha256(String(body?.password || ""));
-        if (!crypto.subtle.timingSafeEqual(given, await sha256(staff[1]))) {
+        if (!crypto.subtle.timingSafeEqual(given, await sha256(cred[1]))) {
             addFail("sf:" + ip, 300000);
             return json({ error: "incorrect password" }, 401);
         }
@@ -585,9 +601,9 @@ async function chatLogin(request, env) {
         const ban = await banOf(env, user, await ipHash(ip, env), dh);
         if (ban) return banError(ban);
     }
-    const username = staff ? staff[0] : user;
-    const token = await makeToken(env, { u: username, a: !!staff, d: dh, exp: Date.now() + SESSION_MS });
-    return json({ ok: true, token, username, isAdmin: !!staff });
+    const username = cred ? cred[0] : user;
+    const token = await makeToken(env, { u: username, a: !!staff, ...(mod ? { m: 1 } : {}), d: dh, exp: Date.now() + SESSION_MS });
+    return json({ ok: true, token, username, isAdmin: !!staff, isMod: !!mod });
 }
 
 async function chatRenew(request, env) {
@@ -715,7 +731,7 @@ async function chatJoin(request, env, id) {
 /* ---------- messages ---------- */
 const metaOf = (v) => {
     const m = { n: v.n, t: v.t, ts: v.ts };
-    for (const k of ["rp", "f", "a", "u", "e", "et"]) if (v[k] !== undefined) m[k] = v[k];
+    for (const k of ["rp", "f", "a", "mo", "u", "e", "et"]) if (v[k] !== undefined) m[k] = v[k];
     return m;
 };
 
@@ -804,7 +820,7 @@ async function chatSend(request, env, room) {
         const q = await db(env).get(`msg:${room}:${rid}`, "json");
         if (q) rp = { i: rid, n: q.n, t: (q.t || (q.f ? "[file] " + q.f.name : "")).slice(0, 40) };
     }
-    const res = await storeMessage(env, room, { n: s.u, t: text, ...(f ? { f } : {}), ...(rp ? { rp } : {}), ...(s.a ? { a: 1 } : {}) }, { ih: g.ih, dh: s.d });
+    const res = await storeMessage(env, room, { n: s.u, t: text, ...(f ? { f } : {}), ...(rp ? { rp } : {}), ...(s.a ? { a: 1 } : {}), ...(s.m ? { mo: 1 } : {}) }, { ih: g.ih, dh: s.d });
     if (res.ok) { await touchRoom(env, room, rec); await cleanup(env).catch(() => { }); }
     return res;
 }
@@ -866,8 +882,11 @@ async function chatDeleteMessage(request, env, room, id) {
     const v = await db(env).get(key, "json");
     if (!v) return json({ error: "message not found" }, 404);
     const own = v.n === s.u && v.dh === s.d;
-    if (!own && !(s.a && !v.a)) return json({ error: "not your message" }, 403); // staff can delete others, but not other staff
+    // admins can delete anyone's message except other admins; mods can't touch admins or other mods
+    if (!own && !((s.a && !v.a) || (s.m && !v.a && !v.mo))) return json({ error: "not your message" }, 403);
     if (v.f?.id) await delFile(env, v.f.id);
+    await db(env).delete(key);
+    if (!own) await modLog(env, s, "delete", { user: v.n, room, text: v.t || (v.f ? "[file] " + (v.f.name || "") : "") });;
     await db(env).delete(key);
     await bumpFeed(env, room);
     return json({ ok: true });
@@ -965,6 +984,34 @@ async function chatReport(request, env) {
     return json({ ok: true });
 }
 
+/* ---------- multiplayer games (websocket -> Durable Object) ---------- */
+// A browser can't set headers on a websocket, so the session token (t) and room password (pw)
+// travel in the query string. Everything is checked here; the GameRoom trusts the x-sl-* headers.
+async function chatGame(request, env, room, url) {
+    if (request.headers.get("upgrade") !== "websocket") return json({ error: "expected a websocket" }, 426);
+    if (!env.GAMES) return json({ error: "games are not set up (add the GAMES durable object binding)" }, 503);
+    if (!isSameOrigin(request)) return json({ error: "forbidden" }, 403);
+    const s = await readToken(env, url.searchParams.get("t") || "");
+    if (!s) return json({ error: "sign in first", auth: true }, 401);
+    const rec = await getRoom(env, room);
+    if (!rec) return json({ error: "no such room" }, 404);
+
+    const headers = new Headers(request.headers);
+    headers.set("x-room-pass", encodeURIComponent(url.searchParams.get("pw") || ""));
+    const denied = await roomGate(new Request(request.url, { headers }), env, rec, s);
+    if (denied) return denied;
+    if (!s.a) {
+        const ban = await banOf(env, s.u, await ipHash(clientIp(request), env), s.d);
+        if (ban) return banError(ban);
+    }
+
+    const fwd = new Request(request);
+    fwd.headers.set("x-sl-pid", s.d);
+    fwd.headers.set("x-sl-name", s.u);
+    fwd.headers.set("x-sl-admin", s.a ? "1" : "0");
+    return env.GAMES.get(env.GAMES.idFromName(room)).fetch(fwd);
+}
+
 /* ---------- router ---------- */
 async function globalChat(request, env, url) {
     const p = url.pathname.split("/").filter(Boolean).slice(2).map(decodeURIComponent); // after ["api","global"]
@@ -985,6 +1032,8 @@ async function globalChat(request, env, url) {
             if (m === "DELETE") return chatDeleteRoom(request, env, p[1]);
         } else if (p[2] === "join" && m === "POST") {
             return chatJoin(request, env, p[1]);
+        } else if (p[2] === "game" && m === "GET") {
+            return chatGame(request, env, p[1], url);
         } else if (p[2] === "messages") {
             if (!p[3]) {
                 if (m === "GET") return chatMessages(request, env, p[1], url);
@@ -1020,6 +1069,35 @@ async function globalChat(request, env, url) {
    DELETE rooms/<id>?wipe=1                   empty a room (without ?wipe the room is removed too) */
 async function chatMod(request, env, s, p) {
     const what = p[0], m = request.method;
+    const MODLOG_TTL = 30 * 86400;      // mod log entries are kept for 30 days
+    const MOD_MAX_MUTE = 1440;          // mods can mute for up to 24h (minutes)
+    async function modLog(env, s, act, d = {}) {
+        try {
+            const ts = Date.now();
+            const e = { ts, by: s.u, role: s.a ? "admin" : "mod", act };
+            for (const k of ["user", "room", "reason", "text", "type"]) if (d[k]) e[k] = String(d[k]).slice(0, k === "text" ? 120 : 80);
+            if (d.minutes !== undefined) e.mins = d.minutes;
+            await db(env).put(`log:${invTs(ts)}:${rand6()}`, JSON.stringify(e), { metadata: e, expirationTtl: MODLOG_TTL });
+        } catch (err) { console.error("modlog", err); }       // never block a moderation action on a logging failure
+    }
+
+    const admin = !!s.a;
+    // mods get: mutes, reports, log, mute, unmute. everything else is admin only.
+    if (!admin && !["mutes", "reports", "log", "mute", "unmute"].includes(what)) return json({ error: "admins only" }, 403);
+
+    if (what === "log" && m === "GET") {
+        const l = await db(env).list({ prefix: "log:", limit: 200 });
+        return json({ items: l.keys.map((k) => k.metadata).filter(Boolean) });
+    }
+    if (what === "reports" && m === "GET") {              // newest chat reports and auto-filter hits, for mods to review
+        const res = await env.FORMS.list({ prefix: "sub:", limit: 200 });
+        const keys = res.keys.filter((k) => k.metadata?.t === "report").slice(0, 30);
+        const items = await Promise.all(keys.map(async (k) => {
+            const v = await env.FORMS.get(k.name, "json");
+            return v ? { id: k.name, subject: v.subject, message: v.message, ts: v.ts, status: v.status } : null;
+        }));
+        return json({ items: items.filter(Boolean) });
+    }
 
     if (what === "mutes" && m === "GET") {
         const l = await db(env).list({ prefix: "mute:", limit: 200 });
@@ -1034,6 +1112,7 @@ async function chatMod(request, env, s, p) {
         const room = p[1];
         if (!validRoom(room || "")) return json({ error: "bad room" }, 400);
         await wipeRoomMessages(env, room);
+        await modLog(env, s, new URL(request.url).searchParams.has("wipe") || room === "general" ? "wipe room" : "delete room", { room });
         if (room !== "general" && !new URL(request.url).searchParams.has("wipe")) { await db(env).delete("room:" + room); await db(env).delete("head:" + room); roomMem.delete(room); roomsMem = null; }
         return json({ ok: true });
     }
@@ -1046,21 +1125,37 @@ async function chatMod(request, env, s, p) {
         const v = await db(env).get(`msg:${room}:${id}`, "json");
         if (!v) return json({ error: "message not found" }, 404);
         if (v.a) return json({ error: `can't ${what} an admin` }, 400);
+        if (v.mo && !admin) return json({ error: `can't ${what} another mod` }, 400);
 
-        const minutes = Math.max(0, Math.floor(Number(body?.minutes) || 0)); // 0 = permanent
+        let minutes = Math.max(0, Math.floor(Number(body?.minutes) || 0)); // 0 = permanent
+        if (!admin && what === "mute") minutes = minutes ? Math.min(minutes, MOD_MAX_MUTE) : MOD_MAX_MUTE; // mods: never permanent
         const reason = clean(body?.reason, 80);
         const until = minutes ? Date.now() + minutes * 60000 : 0;
-        const opts = (extra) => ({ metadata: { user: v.n, reason, until, by: s.u, ...extra }, ...(minutes ? { expirationTtl: Math.max(60, minutes * 60) } : {}) });
-        const rec = JSON.stringify({ reason, until, by: s.u, user: v.n });
+        const role = admin ? "admin" : "mod";
+        const opts = (extra) => ({ metadata: { user: v.n, reason, until, by: s.u, role, ...extra }, ...(minutes ? { expirationTtl: Math.max(60, minutes * 60) } : {}) });
+        const rec = JSON.stringify({ reason, until, by: s.u, role, user: v.n });
 
-        if (what === "mute") { await db(env).put("mute:d:" + v.dh, rec, opts()); return json({ ok: true }); }
-        if (what === "unmute") { await db(env).delete("mute:d:" + v.dh); return json({ ok: true }); }
+        if (what === "mute") {
+            const cur = await db(env).get("mute:d:" + v.dh, "json");
+            if (cur?.role === "admin" && !admin) return json({ error: "an admin already muted them" }, 403);
+            await db(env).put("mute:d:" + v.dh, rec, opts());
+            await modLog(env, s, "mute", { user: v.n, room, reason, minutes });
+            return json({ ok: true });
+        }
+        if (what === "unmute") {
+            const cur = await db(env).get("mute:d:" + v.dh, "json");
+            if (cur?.role === "admin" && !admin) return json({ error: "an admin set this mute, ask an admin" }, 403);
+            await db(env).delete("mute:d:" + v.dh);
+            await modLog(env, s, "unmute", { user: v.n, room });
+            return json({ ok: true });
+        }
 
         const type = body?.type;
         const key = type === "ip" ? "ban:i:" + v.ih : type === "device" ? "ban:d:" + v.dh : type === "username" ? "ban:u:" + v.n.toLowerCase() : "";
         if (!key) return json({ error: "bad ban type" }, 400);
         if (what === "ban") await db(env).put(key, rec, opts({ type }));
         else await db(env).delete(key);
+        await modLog(env, s, what, { user: v.n, room, reason, minutes, type });
         return json({ ok: true });
     }
     return json({ error: "not found" }, 404);

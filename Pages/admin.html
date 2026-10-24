@@ -57,6 +57,7 @@
                 <button class="chip" data-v="request">requests</button>
                 <button class="chip" data-v="bug">bugs</button>
                 <button class="chip" data-v="feedback">feedback</button>
+                <button class="chip" data-v="application">applications</button>
             </div>
             <div class="chips" id="f-status">
                 <button class="chip on" data-v="all">any</button>
@@ -160,7 +161,7 @@
                 const n = (f) => items.filter(f).length;
                 const stats = $("#stats"); stats.replaceChildren();
                 [["total", items.length], ["new", n(i => i.st === "new")], ["requests", n(i => i.t === "request")],
-                ["bugs", n(i => i.t === "bug")], ["feedback", n(i => i.t === "feedback")]].forEach(([k, v]) => {
+                ["bugs", n(i => i.t === "bug")], ["feedback", n(i => i.t === "feedback")], ["applications", n(i => i.t === "application")]].forEach(([k, v]) => {
                     const s = el("div", "stat"); s.append(el("b", null, v), el("span", null, k)); stats.append(s);
                 });
 

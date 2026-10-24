@@ -1375,6 +1375,12 @@ input[type=range]::-moz-range-thumb {
     background: color-mix(in srgb, var(--accent2) 8%, transparent)
 }
 
+.pill.application {
+    color: var(--ok, #5ce1a0);
+    border-color: color-mix(in srgb, var(--ok, #5ce1a0) 40%, transparent);
+    background: color-mix(in srgb, var(--ok, #5ce1a0) 8%, transparent)
+}
+
 .pill.new {
     color: var(--warn);
     border-color: color-mix(in srgb, var(--warn) 40%, transparent)
