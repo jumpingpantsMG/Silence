@@ -101,10 +101,6 @@
         </div>
 
         <div class="list" id="list"></div>
-        <section class="panel" style="margin-top:22px">
-            <h2>ad requests</h2>
-            <div id="ads-list"></div>
-        </section>
         <p class="empty" id="empty" style="padding:48px 0">nothing here.</p>
     </main>
 
@@ -158,24 +154,6 @@
                 return data;
             }
 
-            async function loadAds() {
-                try {
-                    const d = await api("/ads");
-                    $("#ads-list").replaceChildren(...(d.items.length ? d.items.map(i => {
-                        const row = el("div", "row"), info = el("div");
-                        info.append(el("div", "t", i.t), el("div", "d", `${i.st} · ${i.c}${i.p ? " · $" + (i.p / 100).toFixed(2) : ""}`));
-                        const acts = el("div", "actions"); acts.style.marginTop = "0";
-                        const btn = (label, fn) => { const b = el("button", "btn sm", label); b.onclick = async () => { try { await fn(); loadAds(); } catch (e) { toast(e.message, true); } }; return b; };
-                        acts.append(
-                            btn("view", async () => { const a = await api("/ads/" + i.id); alert(`${a.title}\n${a.text}\n${a.url}\n${a.contact}`); }),
-                            btn("approve", () => api("/ads/" + i.id + "/approve", { method: "POST", body: "{}" })),
-                            btn("reject", () => api("/ads/" + i.id + "/reject", { method: "POST", body: "{}" })),
-                            btn("delete", () => api("/ads/" + i.id, { method: "DELETE" })));
-                        row.append(info, acts); return row;
-                    }) : [el("p", "d", "no ad requests.")]));
-                } catch (e) { toast(e.message, true); }
-            }
-
             /* ───────── auth ───────── */
             function show(authed) { $("#login-view").hidden = authed; $("#dash").hidden = !authed; }
             function signOut() {
@@ -208,7 +186,6 @@
                 }
                 items = all;
                 show(true); render(); loadAnn().catch(() => { });
-                loadAds();
             }
 
             function render() {
