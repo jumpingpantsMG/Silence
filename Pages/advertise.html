@@ -67,6 +67,12 @@
     <script>
         (() => {
             const $ = s => document.querySelector(s);
+            const OPEN = false;   // flip to true to reopen
+            if (!OPEN) {
+                document.querySelector(".head p").textContent = "advertising is closed for now. check back later.";
+                document.querySelectorAll(".panel").forEach(p => p.hidden = true);
+                return;
+            }
             const KEY = "silence:ads";
             let mine = [];
             try { mine = JSON.parse(localStorage.getItem(KEY)) || []; } catch { }

@@ -135,6 +135,8 @@ function parseMarkdown(md) {
     return html
 }
 
+const ADS_OPEN = false;
+
 document.addEventListener("DOMContentLoaded", async () => {
     const fragment = document.createRange().createContextualFragment(navbar);
 
@@ -432,7 +434,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     document.addEventListener("DOMContentLoaded", () => {
         const credit = document.querySelector(".credit");
-        if (credit && !credit.querySelector(".adv-link")) {
+        if (ADS_OPEN && credit && !credit.querySelector(".adv-link")) {
             const a = document.createElement("a");
             a.className = "adv-link";
             a.href = "advertise.html";

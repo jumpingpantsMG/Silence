@@ -16,6 +16,7 @@ const BASE_CENTS = 500;        // price when nothing is live
 const STEP_CENTS = 250;        // + this much per ad already live (demand pricing)
 const MAX_CENTS = 3000;
 const REQ_TTL = 30 * 24 * 3600;
+const ADS_OPEN = false;   // flip to true to reopen
 
 const enc = (s) => new TextEncoder().encode(s);
 const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -45,6 +46,7 @@ async function ownRequest(env, id, key) {
 
 /* ───────── public ───────── */
 async function submit(request, env, d) {
+    if (!ADS_OPEN) return d.json({ error: "advertising is closed for now" }, 503);
     if (!d.isSameOrigin(request)) return d.json({ error: "forbidden" }, 403);
     if (Number(request.headers.get("content-length") || 0) > 4096) return d.json({ error: "too large" }, 413);
     let body;
@@ -81,6 +83,7 @@ async function status(env, url, d) {
 }
 
 async function checkout(request, env, d) {
+    if (!ADS_OPEN) return d.json({ error: "advertising is closed for now" }, 503);
     if (!d.isSameOrigin(request)) return d.json({ error: "forbidden" }, 403);
     if (!env.STRIPE_SECRET_KEY) return d.json({ error: "payments are not set up yet" }, 503);
     let body;
