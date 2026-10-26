@@ -11,6 +11,6 @@ jobs:
       - name: purge
         run: |
           curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@${{ github.ref_name }}/index.html" || true
-          for f in style.css Pages/index.html Pages/disguise.html Pages/forms.html Pages/soundboard.html Pages/settings.html Pages/admin.html; do
+          for f in style.css Pages/index.html Pages/disguise.html Pages/disguise2.html Pages/forms.html Pages/soundboard.html Pages/settings.html Pages/admin.html Pages/about.html Pages/advertiser.html; do
             curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@${{ github.ref_name }}/$f" || true
           done

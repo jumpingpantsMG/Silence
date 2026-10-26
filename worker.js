@@ -890,8 +890,7 @@ async function chatDeleteMessage(request, env, room, id) {
     if (!own && !((s.a && !v.a) || (s.m && !v.a && !v.mo))) return json({ error: "not your message" }, 403);
     if (v.f?.id) await delFile(env, v.f.id);
     await db(env).delete(key);
-    if (!own) await modLog(env, s, "delete", { user: v.n, room, text: v.t || (v.f ? "[file] " + (v.f.name || "") : "") });;
-    await db(env).delete(key);
+    if (!own) await modLog(env, s, "delete", { user: v.n, room, text: v.t || (v.f ? "[file] " + (v.f.name || "") : "") });
     await bumpFeed(env, room);
     return json({ ok: true });
 }
@@ -1056,7 +1055,7 @@ async function globalChat(request, env, url) {
     if (p[0] === "mod") {
         const a = await sess(request, env);
         const no = needSession(a); if (no) return no;
-        if (!a.s.a) return json({ error: "not authorized" }, 403);
+        if (!isStaff(a.s)) return json({ error: "not authorized" }, 403);
         if (m !== "GET") { const bad = sameOrigin(request); if (bad !== true) return bad; }
         return chatMod(request, env, a.s, p.slice(1));
     }
@@ -1071,19 +1070,20 @@ async function globalChat(request, env, url) {
    POST   unban    {room,id,type}
    GET    mutes    GET bans
    DELETE rooms/<id>?wipe=1                   empty a room (without ?wipe the room is removed too) */
+
+const MODLOG_TTL = 30 * 86400;      // mod log entries are kept for 30 days
+const MOD_MAX_MUTE = 1440;          // mods can mute for up to 24h (minutes)
+async function modLog(env, s, act, d = {}) {
+    try {
+        const ts = Date.now();
+        const e = { ts, by: s.u, role: s.a ? "admin" : "mod", act };
+        for (const k of ["user", "room", "reason", "text", "type"]) if (d[k]) e[k] = String(d[k]).slice(0, k === "text" ? 120 : 80);
+        if (d.minutes !== undefined) e.mins = d.minutes;
+        await db(env).put(`log:${invTs(ts)}:${rand6()}`, JSON.stringify(e), { metadata: e, expirationTtl: MODLOG_TTL });
+    } catch (err) { console.error("modlog", err); }
+}
+
 async function chatMod(request, env, s, p) {
-    const what = p[0], m = request.method;
-    const MODLOG_TTL = 30 * 86400;      // mod log entries are kept for 30 days
-    const MOD_MAX_MUTE = 1440;          // mods can mute for up to 24h (minutes)
-    async function modLog(env, s, act, d = {}) {
-        try {
-            const ts = Date.now();
-            const e = { ts, by: s.u, role: s.a ? "admin" : "mod", act };
-            for (const k of ["user", "room", "reason", "text", "type"]) if (d[k]) e[k] = String(d[k]).slice(0, k === "text" ? 120 : 80);
-            if (d.minutes !== undefined) e.mins = d.minutes;
-            await db(env).put(`log:${invTs(ts)}:${rand6()}`, JSON.stringify(e), { metadata: e, expirationTtl: MODLOG_TTL });
-        } catch (err) { console.error("modlog", err); }       // never block a moderation action on a logging failure
-    }
 
     const admin = !!s.a;
     // mods get: mutes, reports, log, mute, unmute. everything else is admin only.

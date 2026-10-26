@@ -367,9 +367,12 @@
 <body class="loading">
     <script>
         const params = new URLSearchParams(location.search);
-        const showDisguise =
-            location.hostname.includes("tempotype.org") ||
-            params.get("tempotype") === "true";
+        const BACKUP_HOSTS = ["example.com"];   // ← domains that should show the backup
+        const disguiseName =
+            BACKUP_HOSTS.some(h => location.hostname.includes(h)) || params.get("backup") === "true" ? "disguise2"
+                : location.hostname.includes("tempotype.org") || params.get("tempotype") === "true" ? "disguise"
+                    : null;
+        const showDisguise = !!disguiseName;
 
         try {
             if (
@@ -450,9 +453,7 @@
             const CDN = `https://cdn.jsdelivr.net/gh/${CONFIG.repo}@${CONFIG.ref}/`;
             const LOCAL = new URL("./", location.href).href;
             const LOCAL_FIRST = /[?&]local\b/.test(location.search) || location.hostname.includes("localhost")
-            const SHOW_DISGUISE =
-                location.hostname.includes("tempotype.org") ||
-                new URLSearchParams(location.search).get("tempotype") === "true";
+            const SHOW_DISGUISE = !!disguiseName;
 
             async function checkForUpdates(page = 1, perPage = 1) {
                 try {
@@ -572,6 +573,10 @@
                 docs: svg('<path d="M8 3h11l6 6v20H8z" fill="#4285f4"/><path d="M19 3l6 6h-6z" fill="#a8c7fa"/><path d="M12 15h10M12 19h10M12 23h6" stroke="#fff" stroke-width="1.8"/>'),
                 drive: svg('<path d="M11 4h10l9 15H20z" fill="#fbbc04"/><path d="M11 4L2 19l5 9 9-15z" fill="#0f9d58"/><path d="M7 28h18l5-9H12z" fill="#4285f4"/>'),
             };
+            const DISGUISES = {
+                disguise: { title: "tempo · typing test", icon: ICONS.tempotype },
+                disguise2: { title: "Lumen Study · Flashcards", icon: svg('<rect x="4" y="5" width="24" height="22" rx="3" fill="#3b5bdb"/><path d="M10 12h12M10 16h12M10 20h7" stroke="#fff" stroke-width="2" stroke-linecap="round"/>') },
+            };
 
             // keys you type while using the site can't be the panic key
             const BAD_KEY = /^(Key|Digit|Numpad|Space$|Enter$|Tab$|Backspace$)/;
@@ -649,10 +654,11 @@
                     set("--page-bg-pos", custom && "center");
                     set("--page-bg-att", custom && "fixed");
                 }
-                document.title = disguised ? DEFAULTS.title : (s.title.trim() || pageTitle);
-                let icon = disguised ? ICONS.tempotype : iconHref(s);
-                if (!disguised && s.icon === "none" && window.isDarkMode) icon = "/Silence-logo.png";
-                $("#icon").href = icon;
+                const D = DISGUISES[disguiseName] || DISGUISES.disguise;
+                document.title = disguised ? D.title : (s.title.trim() || pageTitle);
+                let possibleICON = disguised ? D.icon : iconHref(s);
+                if (!disguised && s.icon !== "custom" && window.isDarkMode) possibleICON = "/Silence-logo.png";
+                $("#icon").href = possibleICON;
                 document.body.classList.toggle("panicbtn", s.panicBtn);
             }
             // upload: shrink to a 64x64 PNG so it stays small in localStorage
@@ -706,7 +712,7 @@
             apply();
             // ads must not rename the tab: put the real title back whenever something changes it
             const wantedTitle = () => document.body.classList.contains("locked")
-                ? DEFAULTS.title
+                ? (DISGUISES[disguiseName] || DISGUISES.disguise).title
                 : (cfg.title.trim() || pageTitle);
             new MutationObserver(() => {
                 const want = wantedTitle();
@@ -957,12 +963,10 @@
             }
 
             function swap(name, el) {
-                if (name === "disguise") sweepAds(); else loadSocialBar();
+                if (name === disguiseName) sweepAds(); else loadSocialBar();
                 for (const f of stage.children) f.classList.toggle("on", f === el);
-                if (name !== "disguise" && pages.has("disguise")) {   // just unlocked: drop the typing test
-                    pages.get("disguise").el.remove();
-                    pages.delete("disguise");
-                }
+                if (name !== "disguise" && name !== "disguise2")      // just unlocked: drop whichever disguise was showing
+                    for (const d of ["disguise", "disguise2"]) if (pages.has(d)) { pages.get(d).el.remove(); pages.delete(d); }
                 current = name;
                 window.currentpage = name;
                 pageTitle = titles.get(name) || "silence";
@@ -970,11 +974,11 @@
                 setState("ready");
                 try { el.contentWindow.focus(); } catch { }
                 try { el.contentWindow.dispatchEvent(new Event("silence:route")); } catch { }
-                if (name !== "disguise") idle(preload);
+                if (name !== "disguise" && name !== "disguise2") idle(preload);
             }
 
             async function show(want) {
-                const name = SHOW_DISGUISE && !isUnlocked() ? "disguise" : want;   // locked: every route is the typing test
+                const name = SHOW_DISGUISE && !isUnlocked() ? disguiseName : want;
                 const my = ++token;
                 if (!pages.has(name)) {
                     if (current) document.body.classList.add("busy");   // stay on the current page, thin bar only
