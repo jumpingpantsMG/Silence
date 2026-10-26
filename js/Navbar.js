@@ -414,3 +414,103 @@ document.addEventListener("DOMContentLoaded", async () => {
         load();
     });
 })();
+
+/* ───────── ads: AdSense + paid sponsor card ─────────
+   Paste at the very bottom of js/Navbar.js.
+   Runs on every page except games (index), admin, disguise, player and advertise. */
+(() => {
+    const SKIP = ["index", "admin", "disguise", "player", "advertise"];
+    let page = "";
+    try { page = window.frameElement?.dataset.page || ""; } catch { }
+    if (!page || SKIP.includes(page)) return;
+
+    const ADSENSE = { client: "ca-pub-XXXXXXXXXXXXXXXX", slot: "XXXXXXXXXX" };
+    const hasSense = /^ca-pub-\d{10,}$/.test(ADSENSE.client) && /^\d{6,}$/.test(ADSENSE.slot);
+
+    let origin = location.origin;
+    try { origin = window.parent.location.origin; } catch { }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const credit = document.querySelector(".credit");
+        if (credit && !credit.querySelector(".adv-link")) {
+            const a = document.createElement("a");
+            a.className = "adv-link";
+            a.href = "advertise.html";
+            a.textContent = "advertise";
+            credit.append(" · ", a);
+        }
+
+        const wrap = document.createElement("div");
+        wrap.className = "ad-sponsor";
+        wrap.style.cssText = "max-width:900px;margin:16px auto;padding:0 16px;display:grid;gap:14px;";
+        credit ? credit.before(wrap) : document.body.append(wrap);
+        const sponsor = document.createElement("div");
+        const sense = document.createElement("div");
+        wrap.append(sponsor, sense);
+
+        async function loadSponsor() {
+            let ads = [];
+            try {
+                const c = JSON.parse(sessionStorage.getItem("silence:adsLive") || "null");
+                if (c && Date.now() - c.at < 600000) ads = c.ads;
+                else {
+                    const r = await fetch(origin + "/api/ads/live");
+                    if (r.ok) {
+                        ads = (await r.json()).ads || [];
+                        try { sessionStorage.setItem("silence:adsLive", JSON.stringify({ at: Date.now(), ads })); } catch { }
+                    }
+                }
+            } catch { }
+            if (!ads.length) return;
+            const ad = ads[(Math.random() * ads.length) | 0];
+            const a = document.createElement("a");
+            a.href = ad.u;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer sponsored";
+            a.style.cssText = "display:block;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--panel);";
+            const tag = document.createElement("small");
+            tag.textContent = "sponsored";
+            tag.style.cssText = "display:block;font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;";
+            const t = document.createElement("b");
+            t.textContent = ad.t;
+            t.style.cssText = "display:block;font-weight:500;font-size:.92rem;";
+            const x = document.createElement("span");
+            x.textContent = ad.x;
+            x.style.cssText = "display:block;margin-top:3px;font-size:.82rem;color:var(--muted);line-height:1.45;";
+            a.append(tag, t, x);
+            sponsor.append(a);
+        }
+
+        function loadSense() {
+            if (!hasSense) return;
+            const ins = document.createElement("ins");
+            ins.className = "adsbygoogle";
+            ins.style.cssText = "display:block;width:100%;min-width:250px;min-height:90px;";   // fixed width avoids the flex-collapse TagError
+            ins.dataset.adClient = ADSENSE.client;
+            ins.dataset.adSlot = ADSENSE.slot;
+            ins.dataset.adFormat = "auto";
+            ins.dataset.fullWidthResponsive = "true";
+            sense.append(ins);
+            const s = document.createElement("script");
+            s.async = true;
+            s.crossOrigin = "anonymous";
+            s.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=" + ADSENSE.client;
+            s.onload = () => { try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch { } };
+            document.body.append(s);
+        }
+
+        // pages are preloaded hidden: only load once this page is the one on screen
+        let done = false;
+        const load = () => {
+            if (done) return;
+            let visible = true;
+            try { visible = window.parent.currentpage === page; } catch { }
+            if (!visible) return;
+            done = true; clearInterval(t);
+            loadSponsor();
+            loadSense();
+        };
+        const t = setInterval(load, 800);
+        load();
+    });
+})();

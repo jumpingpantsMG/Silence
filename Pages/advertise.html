@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>silence · advertise</title>
+    <meta name="theme-color" content="#08080a">
+    <link rel="icon" href="../Silence-logo-dark.png" type="image/png">
+    <link rel="stylesheet" href="../style.css">
+    <script src="../js/Navbar.js"></script>
+</head>
+
+<body>
+
+    <main class="wrap narrow stack">
+        <section class="head">
+            <h1>advertise</h1>
+            <p>put your link in front of silence players. each ad runs for 48 hours.</p>
+        </section>
+
+        <section class="panel">
+            <h2>how it works</h2>
+            <p style="color:var(--muted);font-size:.9rem;line-height:1.6">
+                1. send your ad below. 2. we review it and set the price. 3. pay securely with Stripe and it goes live
+                right away. <span id="price"></span>
+            </p>
+        </section>
+
+        <form id="f" class="panel" novalidate autocomplete="off">
+            <div class="field">
+                <label for="title">Title</label>
+                <input id="title" type="text" maxlength="40" placeholder="short and clear">
+            </div>
+            <div class="field">
+                <label for="text">Description</label>
+                <input id="text" type="text" maxlength="100" placeholder="one line, no links">
+            </div>
+            <div class="field">
+                <label for="url">Link</label>
+                <input id="url" type="text" maxlength="200" placeholder="https://example.com" spellcheck="false">
+            </div>
+            <div class="field">
+                <label for="contact">Email</label>
+                <input id="contact" type="text" maxlength="120" placeholder="for your Stripe receipt">
+                <div class="hint"><span class="err" id="err"></span></div>
+            </div>
+            <input class="hp" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+            <div class="actions">
+                <button class="btn primary" id="send" type="submit">send for review</button>
+            </div>
+        </form>
+
+        <section class="panel" id="mine-panel" hidden>
+            <h2>your ads</h2>
+            <div id="mine"></div>
+            <div class="actions"><button class="btn sm" id="refresh" type="button">refresh</button></div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="wrap"><span>silence</span><span>payments handled by Stripe</span></div>
+    </footer>
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+        (() => {
+            const $ = s => document.querySelector(s);
+            const KEY = "silence:ads";
+            let mine = [];
+            try { mine = JSON.parse(localStorage.getItem(KEY)) || []; } catch { }
+            const save = () => { try { localStorage.setItem(KEY, JSON.stringify(mine.slice(-10))); } catch { } };
+
+            let tt;
+            function toast(msg, bad) {
+                const el = $("#toast");
+                el.textContent = msg; el.classList.toggle("err", !!bad); el.classList.add("show");
+                clearTimeout(tt); tt = setTimeout(() => el.classList.remove("show"), 3200);
+            }
+            const money = c => "$" + (c / 100).toFixed(2);
+            const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+            fetch("/api/ads/live").then(r => r.json()).then(d => {
+                $("#price").textContent = d.open ? `current price: ${money(d.price)} · ${d.open} slot${d.open === 1 ? "" : "s"} open.` : "all slots are taken right now, check back soon.";
+            }).catch(() => { });
+
+            /* ── submit ── */
+            $("#f").addEventListener("submit", async e => {
+                e.preventDefault();
+                const err = $("#err"); err.textContent = "";
+                const data = {
+                    title: $("#title").value.trim(), text: $("#text").value.trim(),
+                    url: $("#url").value.trim(), contact: $("#contact").value.trim(), website: $("#website").value,
+                };
+                if (data.url && !/^[a-z][a-z0-9+.-]*:/i.test(data.url)) data.url = "https://" + data.url;
+                const btn = $("#send"); btn.disabled = true; btn.textContent = "sending…";
+                try {
+                    const r = await fetch("/api/ads/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+                    const d = await r.json().catch(() => ({}));
+                    if (!r.ok) throw new Error(d.error || "couldn't send, try again");
+                    mine.push({ id: d.id, key: d.key, title: data.title }); save();
+                    $("#f").reset();
+                    toast("sent. we'll review it soon.");
+                    renderMine();
+                } catch (ex) { err.textContent = ex.message; }
+                finally { btn.disabled = false; btn.textContent = "send for review"; }
+            });
+
+            /* ── my ads ── */
+            async function renderMine() {
+                $("#mine-panel").hidden = !mine.length;
+                const rows = await Promise.all(mine.map(async a => {
+                    let s = { status: "gone" };
+                    try {
+                        const r = await fetch(`/api/ads/status?id=${encodeURIComponent(a.id)}&key=${encodeURIComponent(a.key)}`);
+                        if (r.ok) s = await r.json();
+                    } catch { }
+                    const row = el("div", "row");
+                    const info = el("div");
+                    const note = {
+                        pending: "waiting for review",
+                        approved: `approved · ${money(s.cents)} for 48 hours`,
+                        rejected: "rejected",
+                        paid: "live until " + new Date(s.until).toLocaleString(),
+                        expired: "finished",
+                        gone: "not found (it may have expired)",
+                    }[s.status] || s.status;
+                    info.append(el("div", "t", a.title), el("div", "d", note));
+                    row.append(info);
+                    if (s.status === "approved") {
+                        const b = el("button", "btn sm primary", "pay " + money(s.cents));
+                        b.type = "button";
+                        b.onclick = () => pay(a, b);
+                        row.append(b);
+                    }
+                    if (["rejected", "expired", "gone"].includes(s.status)) {
+                        const b = el("button", "btn sm", "remove");
+                        b.type = "button";
+                        b.onclick = () => { mine = mine.filter(x => x.id !== a.id); save(); renderMine(); };
+                        row.append(b);
+                    }
+                    return row;
+                }));
+                $("#mine").replaceChildren(...rows);
+            }
+
+            async function pay(a, btn) {
+                const w = window.open("about:blank", "_blank");     // opened on the click so popup blockers allow it
+                btn.disabled = true;
+                try {
+                    const r = await fetch("/api/ads/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: a.id, key: a.key }) });
+                    const d = await r.json().catch(() => ({}));
+                    if (!r.ok || !d.url) throw new Error(d.error || "couldn't start checkout");
+                    if (w) w.location.href = d.url; else toast("allow pop-ups, then try again", true);
+                    toast("finish paying in the new tab, then hit refresh here");
+                } catch (ex) { if (w) w.close(); toast(ex.message, true); }
+                finally { btn.disabled = false; }
+            }
+
+            $("#refresh").addEventListener("click", renderMine);
+            renderMine();
+        })();
+    </script>
+</body>
+
+</html>

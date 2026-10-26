@@ -15,6 +15,8 @@
 //   GET    /api/global/rooms/:id/game   websocket, forwarded to that room's GameRoom
 
 export { GameRoom } from "./game/room.js";   // the Durable Object class must be exported from the main module
+import { handleAds, adminAds } from "./ads.js";
+const adsDeps = () => ({ json, clean, clientIp, isSameOrigin, isAdmin, blockedWord, hasLink, sha256 });
 
 const TYPES = new Set(["request", "bug", "feedback", "application"]);
 const STATUSES = new Set(["new", "done"]);
@@ -110,6 +112,7 @@ async function admin(request, env, url) {
 
     const parts = url.pathname.split("/").filter(Boolean); // ["api","admin","submissions",":id"]
     if (parts[2] === "global") return adminGlobal(request, env, parts);
+    if (parts[2] === "ads") return adminAds(request, env, url, parts, adsDeps());
     if (parts[2] === "announcement") return adminAnnouncement(request, env);
     if (parts[2] !== "submissions") return json({ error: "not found" }, 404);
     const id = parts[3] ? decodeURIComponent(parts[3]) : null;
@@ -1212,6 +1215,7 @@ export default {
                 if (url.pathname === "/api/announcement") return request.method === "GET" ? await announcement(env) : json({ error: "method not allowed" }, 405);
                 if (url.pathname.startsWith("/api/admin/")) return await admin(request, env, url);
                 if (url.pathname === "/api/chat") return await ai(request, env);
+                if (url.pathname.startsWith("/api/ads/")) return await handleAds(request, env, url, adsDeps());
                 if (url.pathname.startsWith("/api/global/")) return await globalChat(request, env, url);
                 return json({ error: "not found" }, 404);
             } catch (e) {
