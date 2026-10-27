@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../style.css">
     <link rel="icon" href="../Silence-logo-dark.png" type="image/png">
     <script src="../js/Navbar.js"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 
 <body>
@@ -23,7 +24,7 @@
             <div class="msgs" id="msgs" aria-live="polite">
                 <div class="chat-empty" id="empty">nothing here yet. say something.</div>
             </div>
-
+            <div id="ts"></div>
             <form class="composer" id="f" autocomplete="off">
                 <textarea id="q" rows="1" maxlength="4000" placeholder="message…"></textarea>
                 <button class="btn primary" id="send" type="submit">send</button>
@@ -59,6 +60,29 @@
                 toastEl.classList.add("show");
                 clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove("show"), 3200);
             }
+            const SITEKEY = "0x4AAAAAAFnUTls8m2yL1P2c";
+            const PASS_KEY = "silence:aiPass";
+            let pass = null, tsId = null;
+            try { pass = JSON.parse(sessionStorage.getItem(PASS_KEY)); } catch { }
+            const passOk = () => !!(pass && pass.exp > Date.now() + 30000);
+
+            function needCheck() {
+                $("#ts").hidden = false;
+                if (!window.turnstile) return void setTimeout(needCheck, 300);
+                if (tsId === null) tsId = turnstile.render("#ts", { sitekey: SITEKEY, theme: "dark", callback: verify });
+                else turnstile.reset(tsId);
+            }
+            async function verify(t) {
+                try {
+                    const r = await fetch("/api/chat/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstile: t }) });
+                    const d = await r.json().catch(() => ({}));
+                    if (!r.ok) throw new Error(d.error || "check failed, try again");
+                    pass = { token: d.token, exp: d.exp };
+                    try { sessionStorage.setItem(PASS_KEY, JSON.stringify(pass)); } catch { }
+                    $("#ts").hidden = true;
+                } catch (e) { toast(e.message, true); turnstile.reset(tsId); }
+            }
+            if (passOk()) $("#ts").hidden = true; else needCheck();
 
             // tiny markdown: ```code```, `code`, **bold**. Everything is escaped first.
             const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -95,10 +119,11 @@
                 try {
                     const res = await fetch(API, {
                         method: "POST",
-                        headers: { "content-type": "application/json" },
+                        headers: { "content-type": "application/json", "x-ai-pass": pass?.token || "" },
                         signal: ctl.signal,
                         body: JSON.stringify({ messages: history.slice(-KEEP) })
                     });
+                    if (res.status === 401) { pass = null; try { sessionStorage.removeItem(PASS_KEY); } catch { } needCheck(); throw new Error("quick human check needed, then send again"); }
                     if (res.status === 429) throw new Error("the free ai is busy, wait a few seconds and try again");
                     if (!res.ok || !res.body) throw new Error("the ai didn't answer, try again");
 
@@ -146,6 +171,7 @@
                 if (ctl) { ctl.abort(); return; }
                 const text = q.value.trim();
                 if (!text) return;
+                if (!passOk()) { toast("finish the human check first", true); needCheck(); return; }
                 q.value = "";
                 grow();
                 ask(text);

@@ -9,6 +9,7 @@
     <meta name="theme-color" content="#08080a">
     <link rel="stylesheet" href="../style.css">
     <script src="../js/Navbar.js"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 
 <body>
@@ -54,6 +55,7 @@
             <div class="actions">
                 <button class="btn primary" id="send" type="submit">send</button>
             </div>
+            <div id="ts" style="margin-top:18px"></div>
         </form>
 
         <section class="panel done" id="done" hidden>
@@ -86,6 +88,12 @@
                 feedback: { subject: "Subject (optional)", sPh: "", message: "What's on your mind?", mPh: "ideas, complaints, compliments…", needSubject: false },
                 application: { subject: "Name and contact?", sPh: "e.g. John Doe - johndoe@example.com", message: "Why should we pick you?", mPh: "experience, availability, anything else…", needSubject: true },
             }
+            const SITEKEY = "0x4AAAAAAFnUTls8m2yL1P2c";
+            let tsId = null;
+            (function mountTs() {
+                if (!window.turnstile) return setTimeout(mountTs, 300);
+                tsId = turnstile.render("#ts", { sitekey: SITEKEY, theme: "dark" });
+            })();
             let type = "request";
 
             function setType(t) {
@@ -123,11 +131,13 @@
                     subject: $("#subject").value.trim(),
                     message: $("#message").value.trim(),
                     website: $("#website").value,
+                    turnstile: tsId !== null ? turnstile.getResponse(tsId) : "",
                 };
                 document.querySelectorAll(".bad").forEach(x => x.classList.remove("bad"));
                 err.textContent = "";
                 if (c.needSubject && !data.subject) { $("#subject").classList.add("bad"); $("#subject").focus(); err.textContent = "tell us which one"; return; }
                 if (data.message.length < 5) { $("#message").classList.add("bad"); $("#message").focus(); err.textContent = "a few more words, please"; return; }
+                if (!data.turnstile) { err.textContent = "complete the human check"; return; }
                 const w = wait();
                 if (w) { toast(`slow down — try again in ${Math.ceil(w / 1000)}s`, true); return; }
 

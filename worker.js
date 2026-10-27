@@ -57,6 +57,17 @@ function isSameOrigin(request) {
     return request.headers.get("sec-fetch-site") === "same-origin";
 }
 
+async function turnstileOk(env, token, ip) {
+    if (!env.TURNSTILE_SECRET) return true;      // not configured yet: skip, so nothing breaks
+    if (!token) return false;
+    const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+        method: "POST",
+        body: new URLSearchParams({ secret: env.TURNSTILE_SECRET, response: String(token).slice(0, 2048), remoteip: ip }),
+    });
+    const d = await r.json().catch(() => ({}));
+    return !!d.success;
+}
+
 /* ───────── public: submit a form ───────── */
 async function submitForm(request, env) {
     if (Number(request.headers.get("content-length") || 0) > 8192) return json({ error: "too large" }, 413);
@@ -67,6 +78,7 @@ async function submitForm(request, env) {
 
     // honeypot: bots fill the hidden field. pretend it worked.
     if (clean(body.website, 200)) return json({ ok: true });
+    if (!(await turnstileOk(env, body.turnstile, clientIp(request)))) return json({ error: "please complete the human check" }, 400);
 
     const type = clean(body.type, 20);
     const message = clean(body.message, 1500);
@@ -104,6 +116,8 @@ async function admin(request, env, url) {
     if (fails >= 10) return json({ error: "too many attempts, try later" }, 429);
 
     if (!(await isAdmin(request, env))) {
+        // a wrong or missing token has to come with a solved human check, so guesses can't be scripted
+        if (!(await turnstileOk(env, request.headers.get("x-turnstile"), clientIp(request)))) return json({ error: "complete the human check" }, 403);
         await env.FORMS.put(failKey, String(fails + 1), { expirationTtl: 300 });
         return json({ error: "unauthorized" }, 401);
     }
@@ -155,9 +169,28 @@ async function admin(request, env, url) {
     return json({ error: "method not allowed" }, 405);
 }
 
+const AI_PASS_MS = 30 * 60 * 1000;   // one human check unlocks the ai for 30 min
+
+async function aiVerify(request, env) {
+    if (!isSameOrigin(request)) return json({ error: "forbidden" }, 403);
+    const ip = clientIp(request);
+    if (limited("aiv:" + ip, 1000, 10)) return json({ error: "slow down" }, 429);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+    const exp = Date.now() + AI_PASS_MS;
+    if (!env.TURNSTILE_SECRET) return json({ ok: true, token: "", exp });          // checks are off
+    if (!(await turnstileOk(env, body?.turnstile, ip))) return json({ error: "human check failed, try again" }, 400);
+    return json({ ok: true, token: await makeToken(env, { ai: 1, exp }), exp });
+}
+
 /* ───────── ai ───────── */
 async function ai(request, env) {
     if (!env.GEMINI_API_KEY) return json({ error: "not configured" }, 503);
+    if (env.TURNSTILE_SECRET) {
+        const p = await readToken(env, request.headers.get("x-ai-pass") || "");
+        if (!p?.ai) return json({ error: "human check needed" }, 401);
+    }
+    if (limited("ai:" + clientIp(request), 1500, 20)) return json({ error: "slow down" }, 429);
 
     let body;
     try {
@@ -585,6 +618,7 @@ async function chatLogin(request, env) {
     const user = cleanUser(body?.username);
     const device = String(body?.deviceId || "");
     if (!user || !/^[\w-]{8,64}$/.test(device)) return json({ error: "bad username" }, 400);
+    if (!(await turnstileOk(env, body?.turnstile, ip))) return json({ error: "please complete the human check" }, 400);
 
     const staff = findStaff(env, user), mod = findMod(env, user), cred = staff || mod;
     if (cred) {
@@ -636,6 +670,7 @@ async function chatCreateRoom(request, env) {
     if (!s.a && limited("r:" + clientIp(request), 20000, 3)) return json({ error: "slow down" }, 429);
     let body;
     try { body = await request.json(); } catch { return json({ error: "invalid json" }, 400); }
+    if (!isStaff(s) && !(await turnstileOk(env, body?.turnstile, clientIp(request)))) return json({ error: "please complete the human check" }, 400);
     const name = clean(body?.name, 50).replace(/\s+/g, " ");
     const d = clean(body?.description, 100).replace(/\s+/g, " ");
     if (!name) return json({ error: "room name required (max 50 chars)" }, 400);
@@ -1213,6 +1248,7 @@ export default {
                 if (url.pathname === "/api/announcement") return request.method === "GET" ? await announcement(env) : json({ error: "method not allowed" }, 405);
                 if (url.pathname.startsWith("/api/admin/")) return await admin(request, env, url);
                 if (url.pathname === "/api/chat") return await ai(request, env);
+                if (url.pathname === "/api/chat/verify") return request.method === "POST" ? await aiVerify(request, env) : json({ error: "method not allowed" }, 405);
                 if (url.pathname.startsWith("/api/global/")) return await globalChat(request, env, url);
                 return json({ error: "not found" }, 404);
             } catch (e) {

@@ -10,6 +10,7 @@
     <link rel="icon" href="../Silence-logo.png" type="image/png">
     <script src="../js/Navbar.js"></script>
     <script src="../js/games.js"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
     <style>
         .gc {
             display: flex;
@@ -391,6 +392,7 @@
                     <button class="btn primary" id="g-login" type="button">sign in</button>
                 </div>
             </div>
+            <div id="g-ts" style="margin-top:4px"></div>
             <p class="gc-err" id="g-err"></p>
         </section>
 
@@ -477,6 +479,19 @@
                 e.append(...kids.flat().filter(x => x != null && x !== false));
                 return e;
             };
+            const SITEKEY = "0x4AAAAAAFnUTls8m2yL1P2c";
+            const ts = {
+                w: new Map(),   // key -> { box, id }
+                mount(box, key) {
+                    const cur = this.w.get(key);
+                    if (cur && cur.box === box) return;
+                    if (!window.turnstile) return void setTimeout(() => this.mount(box, key), 300);
+                    if (cur) { try { turnstile.remove(cur.id); } catch { } }
+                    this.w.set(key, { box, id: turnstile.render(box, { sitekey: SITEKEY, theme: "dark" }) });
+                },
+                token(key) { const c = this.w.get(key); return c && window.turnstile ? turnstile.getResponse(c.id) || "" : ""; },
+                reset(key) { const c = this.w.get(key); if (c && window.turnstile) try { turnstile.reset(c.id); } catch { } },
+            };
 
             /* ── state ── */
             let deviceId = load("silence:deviceId", "");
@@ -526,6 +541,7 @@
 
             /* ── views ── */
             function show(view) {
+                if (view === "gate") ts.mount($("#g-ts"), "gate");
                 for (const id of ["gate", "lobby", "chat"]) $("#" + id).hidden = id !== view;
                 if (view !== "chat") { clearTimeout(timer); clearTimeout(idleTimer); }
             }
@@ -562,13 +578,16 @@
                 } catch (e) { gErr(e.message); }
             }
             async function login(u, pw) {
+                const t = ts.token("gate");
+                if (!t) return gErr("complete the human check first");
                 try {
-                    const d = await post("/login", { username: u, password: pw, deviceId });
-                    token = d.token; user = d.username; isAdmin = !!d.isAdmin; isMod = !!d.isMod;
-                    store("silence:chatToken", token, sessionStorage); store("silence:chatUser", user, sessionStorage); store("silence:chatAdmin", isAdmin, sessionStorage); store("silence:chatMod", isMod, sessionStorage);
+                    const d = await post("/login", { username: u, password: pw, deviceId, turnstile: t });
+                    token = d.token; user = d.username; isAdmin = !!d.isAdmin;
+                    store("silence:chatToken", token, sessionStorage); store("silence:chatUser", user, sessionStorage); store("silence:chatAdmin", isAdmin, sessionStorage);
                     $("#g-pw").value = ""; $("#g-pwbox").hidden = true;
                     await afterLogin();
                 } catch (e) { gErr(e.message); }
+                finally { ts.reset("gate"); }
             }
             $("#g-go").onclick = gateContinue;
             $("#g-user").onkeydown = e => { if (e.key === "Enter") gateContinue(); };
@@ -636,6 +655,7 @@
                 const desc = h("input", { maxlength: 100, placeholder: "what's this room for?" });
                 const pw = h("input", { type: "password", maxlength: 40, placeholder: "room password", autocomplete: "new-password" });
                 const pwBox = h("div", { hidden: true }, field("password *", pw));
+                const tsBox = h("div", { style: "margin-top:12px" });
                 const types = [["public", "public"], ["private", "private"], ...(isAdmin ? [["admin", "admin only"]] : [])];
                 const btns = types.map(([k, t]) => h("button", {
                     class: "btn" + (k === type ? " primary" : ""), type: "button",
@@ -643,16 +663,21 @@
                 }, t));
                 dialog("create room", [
                     ...field("room name *", name), ...field("description (optional)", desc),
-                    ...field("room type", h("div", { class: "gc-row" }, btns)), pwBox,
+                    ...field("room type", h("div", { class: "gc-row" }, btns)), pwBox, isAdmin ? "" : tsBox,
                 ], [{
                     label: "create →", primary: true, fn: async close => {
                         if (!name.value.trim()) throw new Error("room name is required.");
                         if (type === "private" && !pw.value.trim()) throw new Error("password is required for private rooms.");
-                        const d = await post("/rooms", { name: name.value, description: desc.value, isPrivate: type === "private", password: type === "private" ? pw.value : "", adminOnly: type === "admin" });
+                        let t = "";
+                        if (!isAdmin) { t = ts.token("room"); if (!t) throw new Error("complete the human check first."); }
+                        let d;
+                        try { d = await post("/rooms", { name: name.value, description: desc.value, isPrivate: type === "private", password: type === "private" ? pw.value : "", adminOnly: type === "admin", turnstile: t }); }
+                        catch (e) { ts.reset("room"); throw e; }
                         if (type === "private") { passes[d.room.id] = pw.value; store("silence:roomPass", passes, sessionStorage); }
                         close(); joinRoom(d.room);
                     },
                 }, cancel]);
+                if (!isAdmin) ts.mount(tsBox, "room");
             };
 
             async function joinRoom(r) {

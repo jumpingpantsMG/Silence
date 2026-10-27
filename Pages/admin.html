@@ -10,6 +10,7 @@
     <link rel="icon" href="../Silence-logo-dark.png" type="image/png">
     <link rel="stylesheet" href="../style.css">
     <script src="../js/Navbar.js"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 
 <body>
@@ -24,6 +25,7 @@
                 <input id="tok" type="password" autocomplete="off" spellcheck="false">
                 <div class="hint"><span class="err" id="login-err"></span></div>
             </div>
+            <div id="ts" style="margin:4px 0 14px"></div>
             <div class="actions"><button class="btn primary" type="submit" id="login-btn">sign in</button></div>
         </form>
     </main>
@@ -125,6 +127,12 @@
             const $ = s => document.querySelector(s);
             const KEY = "silence:admin";
             let token = "", items = [], fType = "all", fStatus = "all", openId = null, tt;
+            const SITEKEY = "0x4AAAAAAFnUTls8m2yL1P2c";
+            let tsId = null, tsHeader = "";
+            (function mountTs() {
+                if (!window.turnstile) return setTimeout(mountTs, 300);
+                tsId = turnstile.render("#ts", { sitekey: SITEKEY, theme: "dark" });
+            })();
             try { token = sessionStorage.getItem(KEY) || ""; } catch { }
 
             const toast = (m, bad) => {
@@ -146,7 +154,7 @@
             async function api(path, opts = {}) {
                 const r = await fetch("/api/admin" + path, {
                     ...opts,
-                    headers: { authorization: "Bearer " + token, "content-type": "application/json" },
+                    headers: { authorization: "Bearer " + token, "content-type": "application/json", ...(tsHeader ? { "x-turnstile": tsHeader } : {}) },
                 });
                 if (r.status === 401) { signOut(); throw new Error("wrong token"); }
                 const data = await r.json().catch(() => ({}));
@@ -164,6 +172,8 @@
                 e.preventDefault();
                 token = $("#tok").value.trim();
                 if (!token) return;
+                tsHeader = tsId !== null ? turnstile.getResponse(tsId) : "";
+                if (!tsHeader) { $("#login-err").textContent = "complete the human check"; token = ""; return; }
                 const btn = $("#login-btn"); btn.disabled = true; $("#login-err").textContent = "";
                 try {
                     await load();
@@ -171,7 +181,10 @@
                     $("#tok").value = "";
                 } catch (ex) {
                     $("#login-err").textContent = ex.message; token = "";
-                } finally { btn.disabled = false; }
+                } finally {
+                    btn.disabled = false; tsHeader = "";
+                    if (tsId !== null) turnstile.reset(tsId);
+                }
             });
             $("#logout").addEventListener("click", signOut);
 
