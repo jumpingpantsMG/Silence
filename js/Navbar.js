@@ -149,7 +149,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.body.prepend(fragment);
     const credit = document.createElement("div");
     credit.className = "credit";
-    credit.innerHTML = '<a href="https://github.com/jumpingpantsmg/Silence" target="_blank" rel="noopener">Github</a>';
+    credit.innerHTML = 'made by <a href="https://github.com/jumpingpantsmg/Silence" target="_blank" rel="noopener">jumpingpantsmg</a>';
     document.body.append(credit);
 
     const commits = await window.parent.checkforupdates();

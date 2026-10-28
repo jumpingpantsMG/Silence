@@ -553,10 +553,13 @@
                 });
             }
             const PANIC_URL = "https://www.google.com";
+            const DEFAULT_LOOK = disguiseName === "disguise2"
+                ? { title: "Lumen Study · Flashcards", icon: "lumen" }
+                : { title: "tempo · typing test", icon: "tempotype" };
             const DEFAULTS = {
-                accent: "violet", density: "comfortable", motion: "full", title: "tempo · typing test", icon: "tempotype", customIcon: "",
+                accent: "violet", density: "comfortable", motion: "full", title: DEFAULT_LOOK.title, icon: DEFAULT_LOOK.icon, customIcon: "",
                 panicOn: true, panicKey: "Backquote", panicUrl: PANIC_URL, panicBtn: false, cloakRedirect: true,
-                lockHidden: false, fresh: true,
+                lockHidden: false, fresh: true, autoCloak: false,
                 theme: "dark", bg: "none", bgUrl: "", idleMin: 0,
             };
 
@@ -565,6 +568,7 @@
             const ICONS = {
                 none: "../Silence-logo-dark.png",
                 tempotype: "../favicon.ico",
+                lumen: "../lumen.png",
                 document: svg('<path d="M8 3h11l6 6v20H8z" fill="#e8eaed"/><path d="M19 3l6 6h-6z" fill="#9aa0a6"/><path d="M11 15h10M11 19h10M11 23h7" stroke="#80868b" stroke-width="1.6"/>'),
                 folder: svg('<path d="M3 8h9l3 3h14v16H3z" fill="#f2b84b"/>'),
                 calendar: svg('<rect x="4" y="6" width="24" height="22" rx="3" fill="#fff" stroke="#9aa0a6" stroke-width="1.6"/><path d="M4 12h24" stroke="#9aa0a6" stroke-width="1.6"/><path d="M10 3v5M22 3v5" stroke="#9aa0a6" stroke-width="2"/>'),
@@ -575,7 +579,7 @@
             };
             const DISGUISES = {
                 disguise: { title: "tempo · typing test", icon: ICONS.tempotype },
-                disguise2: { title: "Lumen Study · Flashcards", icon: svg('<rect x="4" y="5" width="24" height="22" rx="3" fill="#3b5bdb"/><path d="M10 12h12M10 16h12M10 20h7" stroke="#fff" stroke-width="2" stroke-linecap="round"/>') },
+                disguise2: { title: "Lumen Study · Flashcards", icon: ICONS.lumen },
             };
 
             // keys you type while using the site can't be the panic key
@@ -614,6 +618,7 @@
                     panicUrl: cleanUrl(s.panicUrl),
                     panicBtn: bool(s.panicBtn, DEFAULTS.panicBtn),
                     cloakRedirect: bool(s.cloakRedirect, DEFAULTS.cloakRedirect),
+                    autoCloak: bool(s.autoCloak, DEFAULTS.autoCloak),
                     lockHidden: bool(s.lockHidden, DEFAULTS.lockHidden),
                     fresh: bool(s.fresh, DEFAULTS.fresh),
                     theme: s.theme === "light" ? "light" : "dark",
@@ -657,7 +662,7 @@
                 const D = DISGUISES[disguiseName] || DISGUISES.disguise;
                 document.title = disguised ? D.title : (s.title.trim() || pageTitle);
                 let possibleICON = disguised ? D.icon : iconHref(s);
-                if (!disguised && s.icon !== "custom" && window.isDarkMode) possibleICON = "/Silence-logo.png";
+                if (!disguised && s.icon === "none" && window.isDarkMode) possibleICON = "/Silence-logo.png";
                 $("#icon").href = possibleICON;
                 document.body.classList.toggle("panicbtn", s.panicBtn);
             }
@@ -806,6 +811,19 @@
                 if (Date.now() - lastInput >= cfg.idleMin * 60000) lock();
             }, 5000);
 
+            /* ───────── auto about:blank ─────────
+   Pop-ups need a click or key press, so this waits for the first one after the site opens.
+   The setting is read once at load: turning it on takes effect the next time the site opens. */
+            const AUTO = "silence:autoCloaked";
+            let autoArmed = false;
+            try { autoArmed = cfg.autoCloak && window.top === window && sessionStorage.getItem(AUTO) !== "1"; } catch { }
+            const autoGo = () => {
+                if (!autoArmed) return;
+                if (cloak()) { autoArmed = false; try { sessionStorage.setItem(AUTO, "1"); } catch { } }
+            };
+            const AUTO_EVENTS = ["pointerdown", "pointerup", "keydown"];
+            for (const ev of AUTO_EVENTS) addEventListener(ev, autoGo, true);
+
             /* ───────── fetching ───────── */
             // "#/index?play=slope" -> page "index" (the query is read by the page itself)
             const pageFromHash = () => {
@@ -900,6 +918,7 @@
 
             function wire(doc) {
                 watch(doc);
+                for (const ev of AUTO_EVENTS) doc.addEventListener(ev, autoGo, true);
                 // keep navigation inside the shell
                 doc.addEventListener("click", e => {
                     const a = e.target.closest && e.target.closest("a[href]");
@@ -1003,7 +1022,7 @@
             show(pageFromHash());
         })();
     </script>
-    <script src="js/Tour.js"></script>
+    <script src="js/Setup.js"></script>
     <script src="js/Announce.js"></script>
 </body>
 

@@ -104,6 +104,7 @@
                     <div class="hint"><span>overrides what the tab says on every page.</span></div>
                     <div class="seg" id="titles" aria-label="Title presets">
                         <button type="button" data-t="tempo · typing test">Tempo Type</button>
+                        <button type="button" data-t="Lumen Study · Flashcards">Lumen</button>
                         <button type="button" data-t="New Tab">new tab</button>
                         <button type="button" data-t="Untitled document">untitled</button>
                         <button type="button" data-t="Home">home</button>
@@ -124,6 +125,7 @@
                     <div class="seg" id="icon">
                         <button type="button" data-v="none">none</button>
                         <button type="button" data-v="tempotype">Tempo Type</button>
+                        <button type="button" data-v="lumen">Lumen</button>
                         <button type="button" data-v="document">doc</button>
                         <button type="button" data-v="folder">folder</button>
                         <button type="button" data-v="calendar">cal</button>
@@ -238,6 +240,15 @@
                     <label class="switch"><input type="checkbox" id="cloakRedirect"
                             aria-label="Redirect original tab"><span></span></label>
                 </div>
+                <div class="row">
+                    <div>
+                        <div class="t">Open in about:blank automatically</div>
+                        <div class="d">On your first click or key press when you visit. Takes effect next time you open
+                            the site.</div>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="autoCloak"
+                            aria-label="Auto open in about:blank"><span></span></label>
+                </div>
             </section>
 
             <section class="panel">
@@ -276,13 +287,13 @@
             </section>
 
             <section class="panel">
-                <h2>tour</h2>
+                <h2>Setup</h2>
                 <div class="row">
                     <div>
-                        <div class="t">Site tour</div>
-                        <div class="d">Walk through the site again.</div>
+                        <div class="t">Setup</div>
+                        <div class="d">Run the first-time setup again.</div>
                     </div>
-                    <button class="btn sm" id="tour" type="button">start</button>
+                    <button class="btn sm" id="setup" type="button">run setup</button>
                 </div>
             </section>
 
@@ -332,7 +343,7 @@
                 document.querySelectorAll("#density button").forEach(b => b.classList.toggle("on", b.dataset.v === cur.density));
                 $("#motion").checked = cur.motion === "reduced";
                 document.querySelectorAll("#icon button").forEach(b => b.classList.toggle("on", b.dataset.v === cur.icon));
-                for (const id of ["panicOn", "panicBtn", "lockHidden", "cloakRedirect", "fresh"]) $("#" + id).checked = !!cur[id];
+                for (const id of ["panicOn", "panicBtn", "lockHidden", "cloakRedirect", "autoCloak", "fresh"]) $("#" + id).checked = !!cur[id];
                 if (!capturing) $("#key").textContent = S.keyLabel(cur.panicKey);
                 if (document.activeElement !== $("#panicUrl")) $("#panicUrl").value = cur.panicUrl;
                 if (document.activeElement !== $("#title")) $("#title").value = cur.title;
@@ -573,7 +584,7 @@
             let td;
             $("#title").addEventListener("input", e => { clearTimeout(td); td = setTimeout(() => save({ title: e.target.value }), 250); });
             $("#lock").addEventListener("click", () => S.lock());
-            $("#tour").addEventListener("click", () => S.tour?.start());
+            $("#setup").addEventListener("click", () => S.setup && S.setup());
 
             document.querySelectorAll("#titles button").forEach(b => b.addEventListener("click", () => { $("#title").value = b.dataset.t; save({ title: b.dataset.t }); }));
             $("#icon").addEventListener("click", e => { const b = e.target.closest("button"); if (b) save({ icon: b.dataset.v }); });
@@ -608,7 +619,7 @@
                 e.target.value = "";                      // lets you pick the same file again
             });
             $("#iconClear").addEventListener("click", () => { iconErr(); save({ icon: S.defaults.icon, customIcon: "" }); });
-            for (const id of ["panicOn", "panicBtn", "lockHidden", "cloakRedirect", "fresh"])
+            for (const id of ["panicOn", "panicBtn", "lockHidden", "cloakRedirect", "autoCloak", "fresh"])
                 $("#" + id).addEventListener("change", e => save({ [id]: e.target.checked }));
 
             // panic key: click, then press the key you want. Captured before the shell sees it.
