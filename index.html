@@ -418,6 +418,7 @@
                     if (!shellNodes.has(n)) n.remove();
                 }
             }
+
             /* ───────── social bar (loaded once per unlock, never on the disguise page) ───────── */
             let socialLoaded = false;
             function loadSocialBar() {
@@ -883,7 +884,34 @@
             const ASSET = /(["'])\.\.\/([\w.%\/-]+\.[A-Za-z0-9]+)\1/g;
             const rewrite = (html, base) =>
                 html.replace(ASSET, (m, q, p) => (/\.html?$/i.test(p) ? m : `${q}${base}${p}${q}`));
+            function cdnFirstFetch(win, o) {
+                const orig = win.fetch.bind(win);
+                const skip = new RegExp(o.skip);
+                win.fetch = async (input, init) => {
+                    try {
+                        const req = input instanceof Request ? input : null;
+                        const method = (init?.method || req?.method || "GET").toUpperCase();
+                        const u = new URL(req ? req.url : String(input), win.document.baseURI);
+                        if (method === "GET" && u.origin === o.origin && !skip.test(u.pathname)) {
+                            let p = u.pathname.slice(1);
+                            if (!p || p.endsWith("/")) p += "index.html";
+                            const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), o.timeout);
+                            try {
+                                const r = await orig(o.base + p, { signal: ctl.signal, cache: init?.cache });
+                                if (r.ok) return r;
+                            } finally { clearTimeout(t); }
+                        }
+                    } catch { }
+                    return orig(input, init);
+                };
+            }
 
+            const withCdnFetch = (html, base) => {
+                const tag = `<script>(${cdnFirstFetch})(window,${JSON.stringify({
+                    origin: location.origin, base, timeout: CONFIG.timeout, skip: "^/(api|game)(/|$)",
+                })})<\/script>`;
+                return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + tag) : tag + html;
+            };
             // jsDelivr serves .html as text/plain, so the page can't be iframed by URL.
             // Fetch the source and hand it to the frame as srcdoc.
             async function getPage(name) {
@@ -893,7 +921,8 @@
                 failUrl = list[0].url;
                 for (const src of list) {
                     try {
-                        const html = rewrite(await timedFetch(src.url), src.base);
+                        let html = rewrite(await timedFetch(src.url), src.base);
+                        if (src.base !== LOCAL) html = withCdnFetch(html, src.base);
                         cache.set(name, html);
                         return html;
                     } catch (e) { lastErr = e; }
@@ -907,9 +936,9 @@
             };
 
             /* ───────── pages ─────────
-               Each page gets its own iframe the first time it's opened and keeps it.
-               Switching only shows one and hides the rest, so nothing reloads. */
-            function purge() {                      // throw every page away (lock, panic, refresh)
+            Each page gets its own iframe the first time it's opened and keeps it.
+            Switching only shows one and hides the rest, so nothing reloads. */
+            function purge() { // throw every page away (lock, panic, refresh)
                 gen++; token++;
                 for (const { el } of pages.values()) el.remove();
                 pages.clear();
@@ -939,14 +968,14 @@
                 doc.addEventListener("keydown", hotkey);
             }
 
-            function ensure(name) {                 // resolves to the page's iframe, creating it if needed
+            function ensure(name) { // resolves to the page's iframe, creating it if needed
                 const hit = pages.get(name);
                 if (hit) return hit.ready;
 
                 const el = document.createElement("iframe");
                 el.className = "page-frame";
                 el.title = "content";
-                el.dataset.page = name;             // the page's own navbar reads this
+                el.dataset.page = name; // the page's own navbar reads this
                 el.setAttribute("sandbox", SANDBOX);
                 el.setAttribute("allow", ALLOW);
                 el.setAttribute("allowfullscreen", "");
@@ -955,12 +984,12 @@
                 const g = gen;
                 const ready = (async () => {
                     const html = await getPage(name);
-                    if (g !== gen) throw new Error("stale");        // purged while fetching
+                    if (g !== gen) throw new Error("stale"); // purged while fetching
                     await new Promise(done => {
                         el.addEventListener("load", () => {
                             const doc = el.contentDocument;
                             if (doc) { titles.set(name, doc.title || "silence"); wire(doc); }
-                            apply();                                // accent, card size, motion
+                            apply(); // accent, card size, motion
                             done();
                         }, { once: true });
                         el.srcdoc = html;
@@ -984,7 +1013,7 @@
             function swap(name, el) {
                 if (name === disguiseName) sweepAds(); else loadSocialBar();
                 for (const f of stage.children) f.classList.toggle("on", f === el);
-                if (name !== "disguise" && name !== "disguise2")      // just unlocked: drop whichever disguise was showing
+                if (name !== "disguise" && name !== "disguise2") // just unlocked: drop whichever disguise was showing
                     for (const d of ["disguise", "disguise2"]) if (pages.has(d)) { pages.get(d).el.remove(); pages.delete(d); }
                 current = name;
                 window.currentpage = name;
@@ -1000,8 +1029,8 @@
                 const name = SHOW_DISGUISE && !isUnlocked() ? disguiseName : want;
                 const my = ++token;
                 if (!pages.has(name)) {
-                    if (current) document.body.classList.add("busy");   // stay on the current page, thin bar only
-                    else setState("loading");                           // very first load: full loader
+                    if (current) document.body.classList.add("busy"); // stay on the current page, thin bar only
+                    else setState("loading"); // very first load: full loader
                 }
                 try {
                     const el = await ensure(name);
