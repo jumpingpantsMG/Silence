@@ -2,22 +2,18 @@
   "name": "silence",
   "version": "1.0.0",
   "description": "A gaming site built from plain HTML, CSS and JavaScript, served by a Cloudflare Worker.",
-  "main": "sw.js",
+  "main": "worker.js",
+  "type": "module",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "wrangler dev --port 3000",
+    "deploy": "wrangler deploy"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jumpingpantsmg/Silence.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/jumpingpantsmg/Silence/issues"
-  },
-  "homepage": "https://github.com/jumpingpantsmg/Silence#readme",
   "devDependencies": {
     "wrangler": "^4.156.0"
   }
