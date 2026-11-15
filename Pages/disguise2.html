@@ -3,611 +3,601 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Lumen Study · Flashcards</title>
-    <link rel="icon" href="../lumen.png" type="image/png">
-    <meta name=" description" content="Free flashcards and quizzes for students.">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="theme-color" content="#121213">
+    <title>Wordle</title>
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23121213'/%3E%3Crect x='8' y='8' width='14' height='14' rx='2' fill='%233a3a3c'/%3E%3Crect x='25' y='8' width='14' height='14' rx='2' fill='%23b59f3b'/%3E%3Crect x='42' y='8' width='14' height='14' rx='2' fill='%233a3a3c'/%3E%3Crect x='8' y='25' width='14' height='14' rx='2' fill='%23538d4e'/%3E%3Crect x='25' y='25' width='14' height='14' rx='2' fill='%233a3a3c'/%3E%3Crect x='42' y='25' width='14' height='14' rx='2' fill='%23b59f3b'/%3E%3Crect x='8' y='42' width='14' height='14' rx='2' fill='%23538d4e'/%3E%3Crect x='25' y='42' width='14' height='14' rx='2' fill='%23538d4e'/%3E%3Crect x='42' y='42' width='14' height='14' rx='2' fill='%23538d4e'/%3E%3C/svg%3E">
     <style>
         :root {
-            --bg: #f5f6fa;
-            --card: #fff;
-            --ink: #1f2430;
-            --muted: #6b7280;
-            --line: #e3e6ee;
-            --brand: #3b5bdb;
-            --brand-2: #eef1ff;
-            --ok: #2f9e66;
-            --bad: #d6455d;
+            color-scheme: dark;
+            --bg: #121213;
+            --panel: #1a1a1b;
+            --ink: #ffffff;
+            --muted: #818384;
+            --line: #3a3a3c;
+            --border-active: #565758;
+            --green: #538d4e;
+            --yellow: #b59f3b;
+            --gray: #3a3a3c;
+            --key-bg: #818384;
         }
 
         * {
             box-sizing: border-box;
-            margin: 0;
-            padding: 0
         }
 
         html,
         body {
-            height: 100%
-        }
-
-        body {
+            height: 100%;
+            margin: 0;
             background: var(--bg);
             color: var(--ink);
-            font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-family: "Clear Sans", "Helvetica Neue", Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
-            display: flex;
-            flex-direction: column
+            overflow: hidden;
+        }
+
+        button,
+        select {
+            font: inherit;
+            color: inherit;
         }
 
         button {
-            font: inherit;
-            color: inherit;
             cursor: pointer;
-            border: 0;
-            background: none
+            background: none;
+            border: none;
         }
 
-        button:focus-visible {
-            outline: 2px solid var(--brand);
-            outline-offset: 2px
-        }
-
-        .top {
-            height: 56px;
-            flex: none;
+        .app {
             display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 0 22px;
-            background: var(--card);
-            border-bottom: 1px solid var(--line)
+            flex-direction: column;
+            height: 100dvh;
+            max-width: 500px;
+            margin: 0 auto;
+            position: relative;
         }
 
-        .logo {
-            width: 30px;
-            height: 30px;
-            display: grid;
-            place-items: center
-        }
-
-        .logo img {
-            display: block;
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            border-radius: 8px
-        }
-
-        .top b {
-            font-size: 1.05rem;
-            letter-spacing: -.01em
-        }
-
-        .top span {
-            margin-left: auto;
-            color: var(--muted);
-            font-size: .85rem
-        }
-
-        .layout {
-            flex: 1;
-            min-height: 0;
-            display: grid;
-            grid-template-columns: 270px 1fr
-        }
-
-        aside {
-            overflow-y: auto;
-            padding: 20px 14px;
-            border-right: 1px solid var(--line);
-            background: var(--card)
-        }
-
-        aside h2 {
-            padding: 0 10px 10px;
-            font-size: .72rem;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            color: var(--muted)
-        }
-
-        .deck {
-            display: block;
-            width: 100%;
-            text-align: left;
-            padding: 11px 12px;
-            border-radius: 10px;
-            margin-bottom: 4px
-        }
-
-        .deck:hover {
-            background: var(--bg)
-        }
-
-        .deck.on {
-            background: var(--brand-2);
-            color: var(--brand)
-        }
-
-        .deck b {
-            display: block;
-            font-weight: 600;
-            font-size: .92rem
-        }
-
-        .deck small {
-            color: var(--muted);
-            font-size: .78rem
-        }
-
-        main {
-            overflow-y: auto;
-            padding: 28px clamp(18px, 5vw, 56px) 40px
-        }
-
-        .wrap {
-            max-width: 720px;
-            margin: 0 auto
-        }
-
-        .bar {
+        .topbar {
+            height: 52px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap
+            padding: 0 16px;
+            border-bottom: 1px solid var(--line);
+            flex-shrink: 0;
         }
 
-        h1 {
-            font-size: 1.5rem;
-            letter-spacing: -.02em
-        }
-
-        .modes {
-            display: inline-flex;
-            padding: 3px;
-            gap: 2px;
-            background: #e9ecf4;
-            border-radius: 10px
-        }
-
-        .modes button {
-            padding: 6px 16px;
-            border-radius: 8px;
-            font-size: .85rem;
-            color: var(--muted)
-        }
-
-        .modes button.on {
-            background: var(--card);
-            color: var(--ink);
-            box-shadow: 0 1px 3px rgba(20, 30, 60, .12)
-        }
-
-        .prog {
-            height: 6px;
-            margin: 18px 0 8px;
-            border-radius: 6px;
-            background: #e3e6ee;
-            overflow: hidden
-        }
-
-        .prog i {
-            display: block;
-            height: 100%;
-            width: 0;
-            background: var(--brand);
-            border-radius: 6px;
-            transition: width .25s
-        }
-
-        .count {
-            color: var(--muted);
-            font-size: .82rem;
-            margin-bottom: 18px
-        }
-
-        .fc {
-            position: relative;
-            height: 280px;
-            perspective: 1200px;
-            cursor: pointer
-        }
-
-        .face {
-            position: absolute;
-            inset: 0;
+        .nav-group {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 28px;
-            text-align: center;
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            box-shadow: 0 6px 22px -12px rgba(30, 40, 80, .25);
-            backface-visibility: hidden;
-            transition: transform .4s
+            gap: 4px;
+            width: 72px;
         }
 
-        .face small {
-            font-size: .72rem;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            color: var(--muted)
+        .nav-group.right {
+            justify-content: flex-end;
         }
 
-        .face p {
-            font-size: clamp(1.4rem, 4vw, 2rem);
-            font-weight: 600;
-            letter-spacing: -.01em
-        }
-
-        .back {
-            transform: rotateY(180deg)
-        }
-
-        .fc.flip .front {
-            transform: rotateY(180deg)
-        }
-
-        .fc.flip .back {
-            transform: rotateY(360deg)
-        }
-
-        .ctl {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 16px;
-            flex-wrap: wrap
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border-radius: 10px;
-            border: 1px solid var(--line);
-            background: var(--card);
-            font-weight: 500;
-            font-size: .9rem
-        }
-
-        .btn:hover {
-            border-color: #c5cbdd
-        }
-
-        .btn.ok {
-            background: var(--ok);
-            border-color: var(--ok);
-            color: #fff
-        }
-
-        .btn.main {
-            background: var(--brand);
-            border-color: var(--brand);
-            color: #fff
-        }
-
-        .q {
-            padding: 26px;
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            margin-bottom: 14px
-        }
-
-        .q small {
-            font-size: .72rem;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            color: var(--muted)
-        }
-
-        .q p {
-            margin-top: 6px;
-            font-size: 1.6rem;
-            font-weight: 600
-        }
-
-        .opt {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            width: 100%;
-            text-align: left;
-            padding: 14px 16px;
-            margin-bottom: 8px;
-            border-radius: 12px;
-            border: 1px solid var(--line);
-            background: var(--card)
-        }
-
-        .opt:hover {
-            border-color: var(--brand)
-        }
-
-        .opt i {
-            flex: none;
-            width: 24px;
-            height: 24px;
-            border-radius: 7px;
-            background: var(--bg);
+        .icon-btn {
+            width: 34px;
+            height: 34px;
             display: grid;
             place-items: center;
-            font-style: normal;
-            font-size: .78rem;
-            color: var(--muted)
+            border-radius: 4px;
+            color: var(--ink);
+            opacity: 0.85;
         }
 
-        .opt.right {
-            border-color: var(--ok);
-            background: #eaf8f1
+        .icon-btn:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.06);
         }
 
-        .opt.wrong {
-            border-color: var(--bad);
-            background: #fdeef1
+        .brand {
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            user-select: none;
         }
 
-        .done {
-            text-align: center;
-            padding: 48px 20px;
-            background: var(--card);
+        .toast-area {
+            position: absolute;
+            top: 64px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: var(--ink);
+            color: var(--bg);
+            padding: 10px 16px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.88rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+
+        .toast.visible {
+            opacity: 1;
+        }
+
+        .board-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            min-height: 0;
+        }
+
+        .grid {
+            display: grid;
+            gap: 5px;
+            width: min(100%, 330px);
+        }
+
+        .guess-row {
+            display: grid;
+            grid-template-columns: repeat(var(--letters, 5), 1fr);
+            gap: 5px;
+        }
+
+        .tile {
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            border: 2px solid var(--line);
+            background: transparent;
+            font-size: clamp(1.25rem, 5vw, 1.85rem);
+            font-weight: 700;
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        .tile.filled {
+            border-color: var(--border-active);
+            animation: pop 0.08s ease-in-out;
+        }
+
+        .tile.correct {
+            background: var(--green);
+            border-color: var(--green);
+        }
+
+        .tile.present {
+            background: var(--yellow);
+            border-color: var(--yellow);
+        }
+
+        .tile.absent {
+            background: var(--gray);
+            border-color: var(--gray);
+        }
+
+        @keyframes pop {
+            from {
+                transform: scale(0.9);
+            }
+
+            50% {
+                transform: scale(1.06);
+            }
+
+            to {
+                transform: scale(1);
+            }
+        }
+
+        .keyboard {
+            display: grid;
+            gap: 8px;
+            padding: 0 8px 14px;
+            width: 100%;
+            flex-shrink: 0;
+        }
+
+        .key-row {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .key {
+            flex: 1;
+            min-width: 0;
+            height: 56px;
+            border-radius: 4px;
+            background: var(--key-bg);
+            color: var(--ink);
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            user-select: none;
+            display: grid;
+            place-items: center;
+        }
+
+        .key:active {
+            filter: brightness(0.9);
+        }
+
+        .key.wide {
+            flex: 1.5;
+            font-size: 0.75rem;
+        }
+
+        .key.correct {
+            background: var(--green);
+        }
+
+        .key.present {
+            background: var(--yellow);
+        }
+
+        .key.absent {
+            background: var(--gray);
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            display: grid;
+            place-items: center;
+            z-index: 30;
+            padding: 16px;
+        }
+
+        .modal {
+            background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 18px
+            border-radius: 8px;
+            width: min(100%, 380px);
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
-        .done b {
-            display: block;
-            font-size: 3rem;
-            color: var(--brand)
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
         }
 
-        .done p {
-            color: var(--muted);
-            margin-top: 4px
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.05rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
-        .keys {
-            margin-top: 26px;
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--line);
+            font-size: 0.92rem;
+        }
+
+        select {
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border-active);
+            background: var(--bg);
+        }
+
+        .primary-btn {
+            width: 100%;
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 4px;
+            background: var(--green);
+            color: var(--ink);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 0.9rem;
+        }
+
+        .result-body {
             text-align: center;
-            font-size: .78rem;
-            color: var(--muted)
+            padding: 6px 0;
         }
 
-        @media (max-width:760px) {
-            .layout {
-                grid-template-columns: 1fr;
-                grid-template-rows: auto 1fr
+        .result-body p {
+            color: var(--muted);
+            margin: 8px 0 16px;
+            font-size: 0.95rem;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-height: 660px) {
+            .key {
+                height: 46px;
             }
 
-            aside {
-                display: flex;
-                gap: 6px;
-                overflow-x: auto;
-                overflow-y: hidden;
-                padding: 10px;
-                border-right: 0;
-                border-bottom: 1px solid var(--line)
-            }
-
-            aside h2 {
-                display: none
-            }
-
-            .deck {
-                flex: none;
-                width: auto;
-                margin: 0
-            }
-
-            .fc {
-                height: 230px
+            .grid {
+                width: min(100%, 280px);
             }
         }
     </style>
 </head>
 
 <body>
-    <header class="top">
-        <div class="logo"><img src="../lumen.png" alt="" width="30" height="30"></div>
-        <b>Lumen Study</b>
-        <span>Flashcards &amp; quizzes</span>
-    </header>
-
-    <div class="layout">
-        <aside>
-            <h2>Study sets</h2>
-            <div id="decks"></div>
-        </aside>
-        <main>
-            <div class="wrap">
-                <div class="bar">
-                    <h1 id="title"></h1>
-                    <div class="modes" id="modes"></div>
-                </div>
-                <div class="prog"><i id="pbar"></i></div>
-                <div class="count" id="count"></div>
-                <section id="stage"></section>
-                <p class="keys" id="keys"></p>
+    <div class="app">
+        <header class="topbar">
+            <div class="nav-group">
+                <button class="icon-btn" id="newBtn" type="button" title="New Word" aria-label="New Word">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" />
+                    </svg>
+                </button>
             </div>
+            <div class="brand">Wordle</div>
+            <div class="nav-group right">
+                <button class="icon-btn" id="settingsBtn" type="button" title="Settings" aria-label="Settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="toast-area">
+            <div class="toast" id="toast" role="status" aria-live="polite"></div>
+        </div>
+
+        <main class="board-container">
+            <div class="grid" id="grid" aria-label="Guess board"></div>
         </main>
+
+        <section class="keyboard" id="keyboard" aria-label="Keyboard"></section>
+    </div>
+
+    <div class="modal-backdrop hidden" id="settingsModal">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+            <div class="modal-header">
+                <h2 id="settingsTitle">Settings</h2>
+                <button class="icon-btn" id="closeSettings" type="button" aria-label="Close">✕</button>
+            </div>
+            <div class="setting-row">
+                <label for="wordLength">Word Length</label>
+                <select id="wordLength">
+                    <option value="4">4 letters</option>
+                    <option value="5" selected>5 letters</option>
+                    <option value="6">6 letters</option>
+                    <option value="7">7 letters</option>
+                    <option value="8">8 letters</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <label for="guessCount">Max Attempts</label>
+                <select id="guessCount">
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6" selected>6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                </select>
+            </div>
+            <button class="primary-btn" id="applyBtn" type="button">Apply &amp; Restart</button>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="resultModal">
+        <div class="modal result-body" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+            <h2 id="resultTitle"></h2>
+            <p id="resultText"></p>
+            <button class="primary-btn" id="againBtn" type="button">Play Again</button>
+        </div>
     </div>
 
     <script>
         (() => {
-            const $ = s => document.querySelector(s);
-            const PASS = atob("c2lsZW5jZQ==");   // the unlock phrase, never part of any card
+            const $ = (s) => document.querySelector(s);
+            const WORDS = {
+                4: "able acid aged also area army away baby back ball band bank base bath bear beat been beer bell best bill bird blue boat body bomb bond bone book boom born boss both bowl bulk burn bush busy call calm came camp card care case cash cast cell chat city club coal coat code cold come cook cool cope copy cost crew crop dark data date dawn days dead deal dear debt deep deny desk dial diet disc disk does done door dose down draw drew drop drug dual dull dust duty each earn ease east easy edge else even ever evil exit face fact fail fair fall farm fast fate fear feed feel feet fell felt file fill film find fine fire firm fish five flat flow food foot form four free from fuel full fund gain game gate gave gear gene gift girl give glad goal goes gold golf gone good gray grew grow gulf hair half hall hand hang hard harm hate have head hear heat held hell help here hero high hill hire hold hole holy home hope host hour huge hung hunt hurt idea inch into iron item jack jail jazz join jump jury just keen keep kept kick kids kill kind king knee knew know lack lady laid lake land lane last late lead leaf leak lean left legs less life lift like line link list live load loan lock logo long look lord lose loss lost lots love luck made mail main make male many mark mass meal mean meat meet menu mere mess mild mile milk mill mind mine miss mode mood moon more most move much must name navy near neck need news next nice nick nine none nose note okay once only onto open oral over pace pack page paid pain pair pale palm park part pass past path peak pick pink pipe plan play plot plug plus poll pool poor port post pull pure push race rail rain rank rare rate read real rear rent rest rice rich ride ring rise risk road rock role roll roof room root rope rose rule safe said sake sale salt same sand save seat seed seek seem seen self sell send sent sept ship shoe shop shot show shut sick side sign silk site size skin slip slow snow soft soil sold sole some song soon sort soul spot star stay step stop such suit sure take tale talk tall tank tape task team tear tell tend term test text than that them then they thin this thus till time tiny told tone took tool tour town tree trip true tune turn twin type unit upon used user vary vast very view vote wage wait wake walk wall want warm wash wave ways weak wear week well went were west what when wide wife wild will wind wine wing wire wise wish with wood word work yard yeah year your zero zone".split(" "),
+                5: "about above abuse actor acute admit adopt adult after again agent agree ahead alarm album alert alien align alike alive allow alone along alter among anger angle angry apart apple apply arena argue arise array aside asset audio audit avoid award aware awful badly baker bases basic beach began begin being below bench birth black blame blank blind block blood board boost booth bound brain brand bread break brick bride brief bring broad broke brown build built buyer cable carry catch cause chain chair chart chase cheap check chest chief child china chose civil claim class clean clear clerk click clock close cloud coach coast could count court cover craft crash cream crime cross crowd crown curve cycle daily dance dated dealt death debut delay depth doing doubt dozen draft drama drawn dream dress drill drink drive drove dying eager early earth eight elite empty enemy enjoy enter entry equal error event every exact exist extra faith false fault fiber field fifth fifty fight final first fixed flash fleet floor focus force forth forty forum found frame frank fraud fresh front fruit fully funny giant given glass globe glory going grace grade grand grant grass great green gross group grown guard guess guest guide happy heart heavy hence horse hotel house human ideal image imply index inner input issue joint judge known label labor large laser later laugh layer learn lease least leave legal level light limit links lives local logic loose lower lucky lunch magic major maker march match maybe mayor meant media metal might minor minus mixed model money month moral motor mount mouse mouth movie music needs never newly night noise north noted novel nurse occur ocean offer often order other ought paint panel paper party peace phase phone photo piano piece pilot pitch place plain plane plant plate point pound power press price pride prime print prior prize proof proud prove queen quick quiet quite radio raise range rapid ratio reach react ready relax reply right rival river roger rough round route royal rural scale scene scope score sense serve seven shall shape share sharp sheet shelf shell shift shine shirt shock shoot short shown sight since skill sleep slide small smart smile smoke solid solve sorry sound south space speak speed spend spent split sport staff stage stake stand start state steam steel stick still stock stone stood store storm story strip stuck study stuff style sugar suite super sweet table taken taste teach teeth thank their theme there these thick thing think third those three throw tight times tired title today topic total touch tough tower track trade train treat trend trial tried tries truck truly trust truth twice under union unity until upper upset urban usage usual valid value video virus visit vital voice waste watch water wheel where which while white whole whose woman women world worry worse worst worth would write wrong wrote yield young youth".split(" "),
+                6: "action active actual advice almost always animal answer anyone appeal appear around artist aspect assume attack attend august author avenue backed barely battle beauty become before behalf behind belief belong beloved better beyond billion binary bishop bitter blanket border bottle bottom branch breath bridge bright broken budget burden button camera cancer cannot career carpet caught center century chance change charge choice choose church circle client closed coffee college column combat coming common comply copper corner costly cotton county couple course create credit crisis custom damage danger dealer debate decade decide defeat defend degree demand depend deputy desert design desire detail detect device differ dinner direct doctor dollar domain double driven driver during easily eating editor effect effort eighth either eleven emerge empire employ enable ending energy engage engine enough ensure entire entity equity escape estate ethnic excess expand expect expert export extend extent fabric facing factor failed fairly fallen family famous farmer farther father faulted feature federal feeling fellow female figure finger finish fiscal flight flower follow forced forest forget formal format former fourth friend future garden gather gender gently global golden ground growth guilty handle happen hardly headed health hearing heaven height hidden highly honest impact import impose income indeed inform injury inside intend invest island itself jersey joint junior justly kernel killed kindly kingdom kitchen latest latter launch lawyer leader league learn lesson letter likely linked liquid listen little living locate lonely longer lookup lovely luxury mainly manage manner manual margin marine market master matter mature medium member memory mental merely method middle million mineral minute mirror mobile modern modest moment mostly mother motion moving murder museum mutual myself narrow nation native nature nearby nearly nobody normal notice notion number object obtain office online option orange origin output oxygen packet palace parent partly partner people period person phrase picked planet player please plenty pocket poetry police policy popular portion portrait possess postal potato potent pretty prince prison profit proper proven public purple pursue pushed puzzle python quality quarter quickly quietly rabbit racing random rarely rather rating reader really reason recall recent record reduce reform regard region reject relate relief remain remind remote remove repeat report rescue result return reveal review revise reward rhythm ribbon richest riding rising ritual robotic rocket rolled roman rougher rounded runner safety salary sample saving saying school screen search season second secret sector seeing select seller senate senior series served server settled severe shadow shaped share sheet shell should signal signed silent silver simple simply singer single sister slight smooth social socket solely solving source speech spirit spoken spread spring square stable status steady stolen stored stream street stress strict strike string stroke strong student studio submit sudden suffer summer supply surely survey switch symbol system taking talent target taught tenant tender tennis thanks theory thirty though threat thrown ticket timber timing tissue toward travel treaty trying tunnel twenty unable unique united unless unlike update useful valley valued variety varied velvet vendor verbal versus victim viewer village violent virtual vision visual volume wander wanted warned wealth weapon weekly weight widely window winner winter wisdom within wonder worker worthy writer writing".split(" "),
+                7: "ability absence academy account achieve acquire address advance against airport alcohol already ancient another anxious apology appoint approve archive arrange arrival article artisty assault attempt attract average awkward balance barrier battery because bedroom believe beneath benefit between billion biology blanket brother browser building burning cabinet capable capital captain capture careful carrier cartoon ceiling central certain chamber channel chapter charity chicken chronic circuit citizen classic climate clothes collect college combine comfort command comment company compare compete complex concept concern concert conduct confirm connect consist contact contain content control convert correct counsel country courage crystal culture curious current customer cutting damagey dancing dealing decline default deliver density deposit deserve desktop destroy develop diamond digital discuss disease display distance diverse drawing driving dynamic earlier eastern economy edition educate element elevate emotion emperor employee enabley endingy enemy energy enhance enormous episode equality evening exactly example excited exclude execute exercise expense explain explore express factory faculty failure fashion feature federal feeling fiction fifteen finance finding fitness foreign forever formula fortune forward freedom friendly frighten further gallery gateway general genuine geology gesture gigantic goodbye graphic grocery growing hallway happiness harmful harvest heading healthy hearing helpful history holding holiday honestl hopeful hospital housing however hundred husband identify illegal imagine immense improve include income increase indeed initial inquiry insight inspire install instant instead interest internet invent invest islander jealous journey journal justice keeping keyword kitchen knowing landing language largely lasting laundry lawyer leader lecture leisure library license lifetime lighting limited livingly locate machine manager mannerly mapping married massive meaning measure medical meeting mention message million mineral minimum missing mistake mixture monitor morning mountain musical mystery natural neither network neutral nominee nothing numbero observe obvious occasion offering officer official opening opinion optical organic original outdoor outline package painting parking partial passage passion patient pattern payment penalty percent perfect perform perhaps picture pitcher plastic playful pleased pointing politics popular portion position possible powerful practice precise predict prepare present prevent primary printer privacy problem process produce product profile program project promise promote protect protein provide publish purpose qualify quality quarter quickly quieted quietly radical railway reading realize receipt receive recover reflect regular related release reliable remain remember remove replace report request require respect respond restart revenue reverse revision rewrite rhythm richess rolling routine running sadness satisfy science scratch section segment serious service setting several shelter shipping shortly showing silence similar simplify simply sincere sitting situation slightly solution somehow someone speaker special species specify sponsor spotted spready stadium station storage strange stretch student studies subject succeed success suggest support suppose surface surgery surprise surround survive sweater sweeping teacher teaching telling terrible texture theater therapy thereby thought thousand through thunder tickets tighten typical uniform unknown upgrade upsetter useful usernam utility variety various vehicle venture version victory village violent virtual visible visitor walking wanted warning weather wedding weekend welcome western whatever whereas willing winning without witness working workout written younger yourself".split(" "),
+                8: "absolute abstract academic accident accurate achievey activate actually addition adequate adjacent admired advanced advocate affected airplane airporty allusion alphabet although analysis announce anything anywhere apparent appetite approach approval argument arranged arrivaly artistic assemble assisted attitude audience available avoiding awkwardly bacteria balanced beautiful becoming behavior beneaths beginner birthday blocking boundary brilliant building business calendar campaign capacity captured carefuly category celebrate cellular ceremony champion changing cheerful chemical children circular clarify classical clearing climatey closely clothing colorful comedyic commandy community comparey complete computer concrete confident confused connected consider constant continue contract contrast convince cookingly creative creature criminal critical crossing customer database daughter daylight deadline decision decrease delicate delivery describe designer detailed developy diagramed dialogue diamond disaster discover distance dividend document domestic dramatic duration dynamics efficient electric elegant enormous equation estimate evaluate eveningy evidence everyone everyday examine examplee exciting exchange exercise existing expected expense experted explainy extended external fabulous familiar fantasy fashiony favorite featured feedback festival finished fireplace floating focused football forever founder friendly function furniture gasoline generate generous genetics genuine graduate grateful greatest guidance happiness headline healthy helpful highest historic holidayy homepage hospital however humanize hundredy identity imagine improve included increase indicate industry informal inherited innocent instance instanty instead interest interior internal internet interpret interval interview introduce inventor involved isolated jealousy junction keyboard language latitude learning lifetime lighting logical machine maintain majority manager material maximum meaning measure mechanic medicine meeting memorys mention messagey midnight millionly moderate momentous movement multiple musician national naturally negative network nickname nineteen notable nowhere nutrition objective observer occasion offering official olympics operation opposite optional ordinary original outcome overnight painting parallel patience peaceful personal physical platform pleasant popular position positive possible powerful practice precise pressure previous primary priority privacy problem procedure produce progress project promise property purchase question quickly reaction reading received recently recognize recommend recover regional regular related release relevant reliable remember represent required research resource response restart revision romantic runningly saturday schedule science scientist seasonal security selection sensitive sentence separate serious several shipping shopping shortest shoulder simplify situation sleeping slightly software solution something sometimes southern speaking special specific spectrum spinning standard statement strategy strength students stunning subject succeed success suggest sunlight superior supplies supporter surprise swimming symbol system technical technology telephone terrible therefore thinking thirty thousand tomorrow touching training transfer traveled triangle tropical typically ultimate unaware uncertain underused universe unusual update version victory violence virtual visible visitor waiting walking warning weekend welcome whatever wireless wonderful yourself youthful".split(" ")
+            };
 
-            const DECKS = [
-                {
-                    name: "Periodic table", sub: "Chemistry · 20 cards", f: "Symbol", b: "Element", cards: [
-                        ["H", "Hydrogen"], ["He", "Helium"], ["Li", "Lithium"], ["Be", "Beryllium"], ["B", "Boron"],
-                        ["C", "Carbon"], ["N", "Nitrogen"], ["O", "Oxygen"], ["F", "Fluorine"], ["Ne", "Neon"],
-                        ["Na", "Sodium"], ["Mg", "Magnesium"], ["Al", "Aluminum"], ["Si", "Silicon"], ["P", "Phosphorus"],
-                        ["S", "Sulfur"], ["Cl", "Chlorine"], ["Ar", "Argon"], ["K", "Potassium"], ["Ca", "Calcium"]]
-                },
-                {
-                    name: "Math formulas", sub: "Algebra & geometry · 12 cards", f: "Name", b: "Formula", cards: [
-                        ["Area of a circle", "A = πr²"], ["Circumference of a circle", "C = 2πr"],
-                        ["Pythagorean theorem", "a² + b² = c²"], ["Slope formula", "m = (y₂ − y₁) / (x₂ − x₁)"],
-                        ["Quadratic formula", "x = (−b ± √(b² − 4ac)) / 2a"], ["Area of a triangle", "A = ½ × base × height"],
-                        ["Volume of a cylinder", "V = πr²h"], ["Slope-intercept form", "y = mx + b"],
-                        ["Area of a trapezoid", "A = ½(b₁ + b₂)h"], ["Volume of a sphere", "V = (4/3)πr³"],
-                        ["Distance formula", "d = √((x₂ − x₁)² + (y₂ − y₁)²)"], ["Angles in a triangle", "Add up to 180°"]]
-                },
-                {
-                    name: "Spanish basics", sub: "Vocabulary · 16 cards", f: "Español", b: "English", cards: [
-                        ["hola", "hello"], ["adiós", "goodbye"], ["gracias", "thank you"], ["por favor", "please"],
-                        ["buenos días", "good morning"], ["¿cómo estás?", "how are you?"], ["agua", "water"], ["casa", "house"],
-                        ["libro", "book"], ["escuela", "school"], ["amigo", "friend"], ["comida", "food"],
-                        ["perro", "dog"], ["gato", "cat"], ["rojo", "red"], ["azul", "blue"]]
-                },
-                {
-                    name: "US state capitals", sub: "Geography · 15 cards", f: "State", b: "Capital", cards: [
-                        ["Texas", "Austin"], ["California", "Sacramento"], ["New York", "Albany"], ["Florida", "Tallahassee"],
-                        ["Illinois", "Springfield"], ["Washington", "Olympia"], ["Colorado", "Denver"], ["Arizona", "Phoenix"],
-                        ["Ohio", "Columbus"], ["Georgia", "Atlanta"], ["Massachusetts", "Boston"], ["Oregon", "Salem"],
-                        ["Nevada", "Carson City"], ["Pennsylvania", "Harrisburg"], ["Michigan", "Lansing"]]
-                },
-                {
-                    name: "Cell biology", sub: "Biology · 11 cards", f: "Term", b: "Function", cards: [
-                        ["Nucleus", "Stores DNA and controls cell activity"], ["Mitochondria", "Releases energy (ATP) for the cell"],
-                        ["Ribosome", "Builds proteins"], ["Chloroplast", "Site of photosynthesis in plant cells"],
-                        ["Cell membrane", "Controls what enters and leaves the cell"], ["Cell wall", "Rigid outer layer of plant cells"],
-                        ["Vacuole", "Stores water, nutrients and waste"], ["Golgi apparatus", "Packages and ships proteins"],
-                        ["Endoplasmic reticulum", "Makes and transports proteins and lipids"], ["Lysosome", "Breaks down waste and old parts"],
-                        ["Cytoplasm", "Gel-like fluid that holds the organelles"]]
-                },
-            ];
+            let length = 5, maxGuesses = 6, answer = "", current = "", row = 0, finished = false;
+            let board = [], keyStates = {}, seq = "", toastTimer = null;
+            const grid = $("#grid"), keyboard = $("#keyboard"), toast = $("#toast");
+            const token = [115, 105, 108, 101, 110, 99, 101].map(c => String.fromCharCode(c)).join("");
 
-            const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-            const btn = (label, cls, fn) => { const b = h("button", "btn " + (cls || ""), label); b.type = "button"; b.onclick = fn; return b; };
-            const shuffle = a => { a = a.slice(); for (let k = a.length - 1; k > 0; k--) { const j = (Math.random() * (k + 1)) | 0;[a[k], a[j]] = [a[j], a[k]]; } return a; };
-
-            let di = 0, mode = "cards", order = [], i = 0, flipped = false, quiz = null;
-            const known = {};
-            try { const s = JSON.parse(localStorage.getItem("lumen:known") || "{}"); for (const k in s) known[k] = new Set(s[k]); } catch { }
-            const saveKnown = () => { try { localStorage.setItem("lumen:known", JSON.stringify(Object.fromEntries(Object.entries(known).map(([k, v]) => [k, [...v]])))); } catch { } };
-            const kn = () => known[di] || (known[di] = new Set());
-
-            function setDeck(n) {
-                di = n; order = DECKS[n].cards.map((_, k) => k); i = 0; flipped = false; quiz = null;
-                if (mode === "quiz") startQuiz();
-                render();
-            }
-            function setMode(m) { mode = m; flipped = false; if (m === "quiz") startQuiz(); render(); }
-
-            /* ── flashcards ── */
-            const flip = () => { if (mode !== "cards") return; flipped = !flipped; render(); };
-            const next = () => { i = (i + 1) % order.length; flipped = false; render(); };
-            const prev = () => { i = (i - 1 + order.length) % order.length; flipped = false; render(); };
-            const mark = ok => { const s = kn(); ok ? s.add(order[i]) : s.delete(order[i]); saveKnown(); next(); };
-
-            function renderCards() {
-                const D = DECKS[di], c = D.cards[order[i]];
-                const fc = h("div", "fc" + (flipped ? " flip" : ""));
-                const front = h("div", "face front"), back = h("div", "face back");
-                front.append(h("small", null, D.f), h("p", null, c[0]));
-                back.append(h("small", null, D.b), h("p", null, c[1]));
-                fc.append(front, back);
-                fc.onclick = flip;
-                const nav = h("div", "ctl");
-                nav.append(btn("←", "", prev), btn("Flip", "", flip), btn("→", "", next), btn("Shuffle", "", () => { order = shuffle(order); i = 0; flipped = false; render(); }));
-                const rate = h("div", "ctl");
-                rate.append(btn("Still learning", "", () => mark(false)), btn("Got it", "ok", () => mark(true)));
-                $("#stage").replaceChildren(fc, nav, rate);
-                $("#count").textContent = `Card ${i + 1} of ${order.length} · mastered ${kn().size} of ${D.cards.length}`;
-                $("#pbar").style.width = (kn().size / D.cards.length * 100) + "%";
-                $("#keys").textContent = "space: flip · ← →: browse · 1: still learning · 2: got it";
+            function notify(msg, duration = 1400) {
+                clearTimeout(toastTimer);
+                toast.textContent = msg;
+                toast.classList.add("visible");
+                if (duration > 0) {
+                    toastTimer = setTimeout(() => toast.classList.remove("visible"), duration);
+                }
             }
 
-            /* ── quiz ── */
-            function startQuiz() {
-                const D = DECKS[di], all = D.cards.map((_, k) => k);
-                quiz = {
-                    q: 0, score: 0, picked: -1,
-                    qs: shuffle(all).slice(0, 10).map(ci => {
-                        const wrong = shuffle(all.filter(k => k !== ci && D.cards[k][1] !== D.cards[ci][1])).slice(0, 3);
-                        return { ci, opts: shuffle([ci, ...wrong]) };
-                    }),
-                };
+            function chooseWord(n) {
+                const list = WORDS[n].filter(w => w.length === n && /^[a-z]+$/.test(w));
+                return list[Math.floor(Math.random() * list.length)].toUpperCase();
             }
-            const pick = n => { if (mode !== "quiz" || !quiz || quiz.q >= quiz.qs.length || quiz.picked !== -1) return; const q = quiz.qs[quiz.q]; if (n >= q.opts.length) return; quiz.picked = n; if (q.opts[n] === q.ci) quiz.score++; render(); };
-            const nextQ = () => { if (!quiz || quiz.picked === -1) return; quiz.q++; quiz.picked = -1; render(); };
 
-            function renderQuiz() {
-                const D = DECKS[di], total = quiz.qs.length;
-                $("#pbar").style.width = (quiz.q / total * 100) + "%";
-                if (quiz.q >= total) {
-                    const d = h("div", "done");
-                    d.append(h("b", null, `${quiz.score}/${total}`), h("p", null, quiz.score === total ? "Perfect score!" : "Nice work. Keep practicing."));
-                    const c = h("div", "ctl"); c.append(btn("Try again", "main", () => { startQuiz(); render(); }));
-                    $("#stage").replaceChildren(d, c);
-                    $("#count").textContent = "Quiz complete";
-                    $("#keys").textContent = "";
+            function startGame() {
+                length = Number($("#wordLength").value);
+                maxGuesses = Number($("#guessCount").value);
+                answer = chooseWord(length);
+                current = "";
+                row = 0;
+                finished = false;
+                board = [];
+                keyStates = {};
+                $("#resultModal").classList.add("hidden");
+                $("#settingsModal").classList.add("hidden");
+                toast.classList.remove("visible");
+                grid.style.setProperty("--letters", length);
+                renderBoard();
+                renderKeyboard();
+            }
+
+            function renderBoard() {
+                grid.replaceChildren();
+                for (let r = 0; r < maxGuesses; r++) {
+                    const line = document.createElement("div");
+                    line.className = "guess-row";
+                    for (let c = 0; c < length; c++) {
+                        const tile = document.createElement("div");
+                        tile.className = "tile";
+                        const val = board[r]?.word?.[c] || (r === row ? current[c] : "");
+                        tile.textContent = val || "";
+                        if (val) tile.classList.add("filled");
+                        const state = board[r]?.states?.[c];
+                        if (state) tile.classList.add(state);
+                        line.append(tile);
+                    }
+                    grid.append(line);
+                }
+            }
+
+            const rows = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+            function renderKeyboard() {
+                keyboard.replaceChildren();
+                rows.forEach((letters, index) => {
+                    const line = document.createElement("div");
+                    line.className = "key-row";
+                    if (index === 2) line.append(makeKey("ENTER", "wide", submit));
+                    for (const letter of letters) {
+                        line.append(makeKey(letter, "", () => addLetter(letter)));
+                    }
+                    if (index === 2) line.append(makeKey("⌫", "wide", removeLetter));
+                    keyboard.append(line);
+                });
+            }
+
+            function makeKey(label, extra, action) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "key " + extra;
+                b.textContent = label;
+                if (label.length === 1 && keyStates[label]) b.classList.add(keyStates[label]);
+                b.addEventListener("click", action);
+                return b;
+            }
+
+            function addLetter(letter) {
+                if (finished || current.length >= length) return;
+                current += letter;
+                renderBoard();
+            }
+
+            function removeLetter() {
+                if (finished || !current.length) return;
+                current = current.slice(0, -1);
+                renderBoard();
+            }
+
+            function scoreGuess(guess) {
+                const states = Array(length).fill("absent");
+                const remaining = answer.split("");
+                for (let i = 0; i < length; i++) {
+                    if (guess[i] === answer[i]) {
+                        states[i] = "correct";
+                        remaining[i] = null;
+                    }
+                }
+                for (let i = 0; i < length; i++) {
+                    if (states[i] === "correct") continue;
+                    const at = remaining.indexOf(guess[i]);
+                    if (at !== -1) {
+                        states[i] = "present";
+                        remaining[at] = null;
+                    }
+                }
+                return states;
+            }
+
+            function submit() {
+                if (finished) return;
+                if (current.length !== length) {
+                    notify("Not enough letters");
                     return;
                 }
-                const q = quiz.qs[quiz.q], box = h("div", "q");
-                box.append(h("small", null, D.f), h("p", null, D.cards[q.ci][0]));
-                const list = h("div");
-                q.opts.forEach((o, n) => {
-                    const b = h("button", "opt"); b.type = "button";
-                    if (quiz.picked !== -1) b.classList.add(o === q.ci ? "right" : n === quiz.picked ? "wrong" : "x");
-                    b.append(h("i", null, String(n + 1)), h("span", null, D.cards[o][1]));
-                    b.onclick = () => pick(n);
-                    list.append(b);
-                });
-                const c = h("div", "ctl");
-                if (quiz.picked !== -1) c.append(btn(quiz.q + 1 === total ? "See score" : "Next", "main", nextQ));
-                $("#stage").replaceChildren(box, list, c);
-                $("#count").textContent = `Question ${quiz.q + 1} of ${total} · score ${quiz.score}`;
-                $("#keys").textContent = "1–4: choose an answer · space: next";
+                const guess = current;
+                const states = scoreGuess(guess);
+                board[row] = { word: guess, states };
+                for (let i = 0; i < length; i++) {
+                    const letter = guess[i], next = states[i];
+                    const previous = keyStates[letter];
+                    if (next === "correct" || (next === "present" && previous !== "correct") || !previous) {
+                        keyStates[letter] = next;
+                    }
+                }
+                row++;
+                current = "";
+                renderBoard();
+                renderKeyboard();
+                if (guess === answer) endGame(true);
+                else if (row >= maxGuesses) endGame(false);
             }
 
-            /* ── layout ── */
-            function render() {
-                $("#decks").replaceChildren(...DECKS.map((D, n) => {
-                    const b = h("button", "deck" + (n === di ? " on" : "")); b.type = "button";
-                    b.append(h("b", null, D.name), h("small", null, D.sub));
-                    b.onclick = () => setDeck(n);
-                    return b;
-                }));
-                $("#title").textContent = DECKS[di].name;
-                $("#modes").replaceChildren(...[["cards", "Flashcards"], ["quiz", "Quiz"]].map(([k, t]) => {
-                    const b = h("button", mode === k ? "on" : "", t); b.type = "button"; b.onclick = () => setMode(k); return b;
-                }));
-                mode === "cards" ? renderCards() : renderQuiz();
+            function endGame(won) {
+                finished = true;
+                const praises = ["Genius", "Magnificent", "Impressive", "Splendid", "Great", "Phew"];
+                notify(won ? (praises[Math.min(row - 1, praises.length - 1)]) : answer, 2200);
+                setTimeout(() => {
+                    $("#resultTitle").textContent = won ? "Statistics" : "Game Over";
+                    $("#resultText").textContent = won
+                        ? `Solved ${answer} in ${row} ${row === 1 ? "try" : "tries"}.`
+                        : `The word was ${answer}.`;
+                    $("#resultModal").classList.remove("hidden");
+                }, 1200);
             }
 
-            /* ── unlock ──
-               Nothing on this page takes letters, so typing the phrase anywhere is enough. Nothing
-               changes on screen until it matches. Digits, space and arrows are used by the page and
-               reset the buffer, so normal use can't spell it. */
-            let buf = "";
-            function watch(e) {
-                if (e.key === "Backspace") buf = buf.slice(0, -1);
-                else if (/^[a-z]$/i.test(e.key)) buf = (buf + e.key.toLowerCase()).slice(-PASS.length);
-                else if (e.key.length === 1 || e.key === "Enter" || e.key === "Tab") buf = "";
-                if (buf !== PASS) return false;
-                buf = "";
-                try { parent.silence.unlock(); } catch { }
-                return true;
-            }
-
-            addEventListener("keydown", e => {
+            document.addEventListener("keydown", (e) => {
                 if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
-                if (watch(e)) return;
-                if (e.key === " ") { e.preventDefault(); mode === "cards" ? flip() : nextQ(); }
-                else if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); mode === "cards" ? next() : nextQ(); }
-                else if (e.key === "ArrowLeft" && mode === "cards") { e.preventDefault(); prev(); }
-                else if (/^[1-4]$/.test(e.key)) { mode === "cards" ? (e.key === "1" ? mark(false) : e.key === "2" ? mark(true) : 0) : pick(+e.key - 1); }
+
+                if (/^[a-z]$/i.test(e.key)) {
+                    seq = (seq + e.key.toLowerCase()).slice(-token.length);
+                    if (seq === token) {
+                        seq = "";
+                        try {
+                            if (window.parent && window.parent !== window && window.parent[token]?.unlock) {
+                                window.parent[token].unlock();
+                            }
+                        } catch (_) { }
+                    }
+                } else if (e.key === "Backspace") {
+                    seq = seq.slice(0, -1);
+                } else if (e.key.length === 1 || e.key === "Enter") {
+                    seq = "";
+                }
+
+                if (!$("#settingsModal").classList.contains("hidden")) return;
+                if (e.key === "Enter") { e.preventDefault(); submit(); }
+                else if (e.key === "Backspace") { e.preventDefault(); removeLetter(); }
+                else if (/^[a-z]$/i.test(e.key)) addLetter(e.key.toUpperCase());
             });
 
-            setDeck(0);
+            $("#newBtn").addEventListener("click", startGame);
+            $("#againBtn").addEventListener("click", startGame);
+            $("#applyBtn").addEventListener("click", startGame);
+            $("#settingsBtn").addEventListener("click", () => $("#settingsModal").classList.remove("hidden"));
+            $("#closeSettings").addEventListener("click", () => $("#settingsModal").classList.add("hidden"));
+
+            startGame();
         })();
     </script>
 </body>

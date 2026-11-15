@@ -324,6 +324,105 @@
             display: block
         }
 
+        .go-silence {
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: radial-gradient(700px circle at 50% 38%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 62%), rgba(0, 0, 0, .78);
+            backdrop-filter: blur(10px);
+            animation: pop .4s var(--ease) both
+        }
+
+        .go-silence[hidden] {
+            display: none
+        }
+
+        .gs-card {
+            width: min(380px, 100%);
+            padding: 34px 28px 26px;
+            border-radius: 24px;
+            text-align: center;
+            background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, .01)), var(--panel);
+            border: 1px solid var(--line);
+            box-shadow: 0 40px 90px -30px #000
+        }
+
+        .gs-mark {
+            font-size: 2.2rem;
+            font-weight: 200;
+            letter-spacing: -.045em;
+            line-height: 1;
+            background: linear-gradient(180deg, #fff 25%, #6a6a76 115%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent
+        }
+
+        :root[data-theme=light] .gs-mark {
+            background: linear-gradient(180deg, #16161a 25%, #8a8a96 115%);
+            -webkit-background-clip: text;
+            background-clip: text
+        }
+
+        .gs-card h2 {
+            margin-top: 18px;
+            font-size: 1.15rem;
+            font-weight: 500;
+            letter-spacing: -.01em
+        }
+
+        .gs-card p {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: .88rem;
+            line-height: 1.55
+        }
+
+        .gs-go {
+            margin-top: 24px;
+            width: 100%;
+            height: 46px;
+            border: 0;
+            border-radius: 999px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: #08080a;
+            font-weight: 600;
+            font-size: .92rem;
+            transition: transform .25s var(--ease), filter .25s
+        }
+
+        .gs-go:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.08)
+        }
+
+        .gs-go:focus-visible,
+        .gs-alt:focus-visible {
+            outline: 2px solid var(--fg);
+            outline-offset: 3px
+        }
+
+        .gs-alt {
+            margin-top: 12px;
+            background: none;
+            border: 0;
+            color: var(--muted);
+            font-size: .8rem;
+            text-decoration: underline;
+            text-underline-offset: 3px
+        }
+
+        .gs-alt:hover {
+            color: var(--fg)
+        }
+
+        .gs-alt[hidden] {
+            display: none
+        }
+
         @media (prefers-reduced-motion:reduce) {
 
             *,
@@ -404,6 +503,17 @@
     </div>
 
     <div id="stage"></div>
+
+    <div id="go-silence" class="go-silence" role="dialog" aria-modal="true" aria-labelledby="go-silence-title"
+        aria-describedby="go-silence-message" hidden>
+        <div class="gs-card">
+            <div class="gs-mark">silence</div>
+            <h2 id="go-silence-title">you're in</h2>
+            <p id="go-silence-message"></p>
+            <button class="gs-go" id="go-silence-open" type="button">go to silence</button>
+            <button class="gs-alt" id="go-silence-stay" type="button" hidden>continue in this tab</button>
+        </div>
+    </div>
 
     <script>
         (() => {
@@ -555,7 +665,7 @@
             }
             const PANIC_URL = "https://www.google.com";
             const DEFAULT_LOOK = disguiseName === "disguise2"
-                ? { title: "Lumen Study · Flashcards", icon: "lumen" }
+                ? { title: "Wordle", icon: "wordle" }
                 : { title: "tempo · typing test", icon: "tempotype" };
             const DEFAULTS = {
                 accent: "violet", density: "comfortable", motion: "full", title: DEFAULT_LOOK.title, icon: DEFAULT_LOOK.icon, customIcon: "",
@@ -569,7 +679,7 @@
             const ICONS = {
                 none: "../Silence-logo-dark.png",
                 tempotype: "../favicon.ico",
-                lumen: "../lumen.png",
+                wordle: "../wordle.jpeg",
                 document: svg('<path d="M8 3h11l6 6v20H8z" fill="#e8eaed"/><path d="M19 3l6 6h-6z" fill="#9aa0a6"/><path d="M11 15h10M11 19h10M11 23h7" stroke="#80868b" stroke-width="1.6"/>'),
                 folder: svg('<path d="M3 8h9l3 3h14v16H3z" fill="#f2b84b"/>'),
                 calendar: svg('<rect x="4" y="6" width="24" height="22" rx="3" fill="#fff" stroke="#9aa0a6" stroke-width="1.6"/><path d="M4 12h24" stroke="#9aa0a6" stroke-width="1.6"/><path d="M10 3v5M22 3v5" stroke="#9aa0a6" stroke-width="2"/>'),
@@ -580,7 +690,7 @@
             };
             const DISGUISES = {
                 disguise: { title: "tempo · typing test", icon: ICONS.tempotype },
-                disguise2: { title: "Lumen Study · Flashcards", icon: ICONS.lumen },
+                disguise2: { title: "Wordle", icon: ICONS.wordle },
             };
 
             // keys you type while using the site can't be the panic key
@@ -730,20 +840,41 @@
                Unlocked state lives in sessionStorage, so closing the tab locks it again. */
             const GATE = "silence:unlocked";
             let memUnlocked = false;
+            let goToSilenceDismissed = false;
+            const goToSilence = $("#go-silence");
+            const goToSilenceMessage = $("#go-silence-message");
+            const goToSilenceStay = $("#go-silence-stay");
             const isUnlocked = () => {
                 try { if (sessionStorage.getItem(GATE) === "1") return true; } catch { }
                 return memUnlocked;
             };
+            function offerGoToSilence() {
+                if (window.top !== window || goToSilenceDismissed || autoArmed) return;   // not inside the about:blank window, not twice
+                if (SHOW_DISGUISE && !isUnlocked()) return;                               // disguise host: only after unlocking
+                if (/[?&]nogo\b/.test(location.search)) return;                           // dev escape hatch
+                goToSilenceMessage.textContent = "Silence opens in its own blank window, so the address bar stays empty." +
+                    (cfg.cloakRedirect ? " This tab will be sent somewhere else." : "");
+                goToSilenceStay.hidden = true;
+                goToSilence.hidden = false;
+                $("#go-silence-open").focus();
+            }
+            function dismissGoToSilence() {
+                goToSilence.hidden = true;
+                goToSilenceDismissed = true;
+            }
             function unlock() {
                 touch();
                 memUnlocked = true;
                 try { sessionStorage.setItem(GATE, "1"); } catch { }
+                goToSilenceDismissed = false;
                 document.body.classList.remove("locked");
                 show(pageFromHash());
             }
             function lock() {
                 memUnlocked = false;
                 try { sessionStorage.removeItem(GATE); } catch { }
+                goToSilence.hidden = true;
+                goToSilenceDismissed = false;
                 document.body.classList.add("locked");
                 history.replaceState(null, "", location.pathname + location.search);   // drop #/route from the URL
                 purge();
@@ -766,10 +897,10 @@
 
             // Open the site inside an about:blank window so the address bar shows nothing.
             // Needs a click (popup rules). Optionally sends this tab to the panic URL.
-            function cloak() {
+            function cloak(keepUnlocked) {
                 const w = window.open("about:blank", "_blank");
                 if (!w) return false;
-                try { w.sessionStorage.removeItem(GATE); } catch { }      // popups inherit sessionStorage: start the cloak locked
+                try { if (!keepUnlocked) w.sessionStorage.removeItem(GATE); } catch { }
                 const d = w.document;
                 d.title = document.title;
                 const ic = d.createElement("link"); ic.rel = "icon"; ic.href = $("#icon").href; d.head.append(ic);
@@ -784,7 +915,14 @@
                 if (cfg.cloakRedirect && window.top === window) location.replace(cfg.panicUrl);
                 return true;
             }
-
+            $("#go-silence-open").addEventListener("click", () => {
+                window.silence.launched = true;      // Setup.js runs in the new window instead of this tab
+                if (cloak(true)) { dismissGoToSilence(); return; }
+                window.silence.launched = false;
+                goToSilenceMessage.textContent = "Pop-ups are blocked. Allow pop-ups for this site, then try again.";
+                goToSilenceStay.hidden = false;
+            });
+            goToSilenceStay.addEventListener("click", dismissGoToSilence);
             const hotkey = e => {
                 if (e.altKey && e.shiftKey && e.code === "KeyL" && isUnlocked()) { e.preventDefault(); lock(); return; }   // Alt + Shift + L
                 if (cfg.panicOn && e.code === cfg.panicKey && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); panic(); }
@@ -1022,6 +1160,7 @@
                 setState("ready");
                 try { el.contentWindow.focus(); } catch { }
                 try { el.contentWindow.dispatchEvent(new Event("silence:route")); } catch { }
+                offerGoToSilence();
                 if (name !== "disguise" && name !== "disguise2") idle(preload);
             }
 
