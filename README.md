@@ -29,7 +29,7 @@ The Worker does two jobs: it serves the static site, and it runs a small API for
 - **Global chat**: usernames, a global room plus user-made rooms (public, private or admin-only), replies, edits with history, file sharing, reports, popups for new messages, and staff moderation (admins and mods).
 - **Multiplayer games in chat rooms**: a `GameRoom` Durable Object that rooms connect to over a WebSocket.
 - **Announcements**: admins post a site-wide banner from the admin page.
-- **Human checks**: Cloudflare Turnstile on forms, admin sign-in, chat sign-in, room creation and the AI page.
+- **Human check**: Cloudflare Turnstile on the admin sign-in only.
 - **Privacy tools**: disguise pages that show until the site is unlocked, a panic key, tab title and icon changes, opening in `about:blank` (manually or automatically), lock on tab leave and idle auto-lock.
 - **First-run setup**: a short wizard for theme, tab look, panic settings and hiding options. It can be run again from settings.
 - **Soundboard**, **settings**, **about** and **admin** pages.
@@ -109,7 +109,7 @@ Use `new_sqlite_classes`: the free plan only supports SQLite-backed Durable Obje
 ```bash
 npx wrangler secret put ADMIN_TOKEN        # admin page login, also signs chat sessions
 npx wrangler secret put GEMINI_API_KEY     # the AI page
-npx wrangler secret put TURNSTILE_SECRET   # human checks, see below
+npx wrangler secret put TURNSTILE_SECRET   # admin sign-in check, see below
 npx wrangler secret put CHAT_ADMINS        # optional: extra chat admins, see below
 npx wrangler secret put CHAT_MODS          # optional: chat moderators, see below
 npx wrangler secret put CHAT_SECRET        # optional: separate key for chat sessions
@@ -129,15 +129,15 @@ CHAT_MODS=bob:another-password
 
 `1x0000000000000000000000000000000AA` is Cloudflare's test secret. It always passes, so it is safe for local work.
 
-### 6. Set up Turnstile (human checks)
+### 6. Set up Turnstile (admin sign-in check)
 
 1. In the Cloudflare dashboard, go to **Turnstile → Add widget**. Add your site's hostname (and `localhost` for local work). Use the **Managed** mode.
-2. Copy the **site key** into the `SITEKEY` constant in `Pages/forms.html`, `Pages/admin.html`, `Pages/chat.html` and `Pages/ai.html`. The site key is public.
+2. Copy the **site key** into the `SITEKEY` constant in `Pages/admin.html`. The site key is public.
 3. Save the **secret key** with `npx wrangler secret put TURNSTILE_SECRET`.
 
 For testing, Cloudflare's dummy site key `1x00000000000000000000AA` always passes, and `2x00000000000000000000AB` always fails.
 
-If `TURNSTILE_SECRET` is not set, the Worker skips the checks so nothing breaks while you set up. Set it before you go live.
+If `TURNSTILE_SECRET` is not set, the Worker skips the check so nothing breaks while you set up. Set it before you go live.
 
 ---
 
@@ -212,17 +212,11 @@ Admins can't be banned or muted and skip the word and link filters. Mods are hel
 
 The word filter is the `BLOCKED_WORDS` list near the top of the chat section in `worker.js`. Add your own words there. Links are blocked for everyone except admins. Blocked messages are never posted; they are sent to the admin page as reports.
 
-### Human checks (Turnstile)
+### Human check (Turnstile)
 
-| Where                         | What is checked                                                        |
-| ----------------------------- | ---------------------------------------------------------------------- |
-| Forms page                    | every submission                                                       |
-| Admin sign-in                 | only a wrong or missing token has to bring a solved check (`x-turnstile` header), so guesses can't be scripted. The right token needs no check |
-| Chat sign-in                  | everyone, staff included                                               |
-| Chat room creation            | everyone except staff                                                  |
-| AI page                       | one check unlocks it for 30 minutes (`POST /api/chat/verify` returns a signed pass, sent as `x-ai-pass`) |
+Only the admin sign-in uses Turnstile. A wrong or missing token has to come with a solved check (`x-turnstile` header), so guesses can't be scripted. The right token needs no check. Forms, chat and the AI page have no human check; they rely on the hidden honeypot field, rate limits and the chat filters.
 
-Tokens are single use, so each page resets its widget after every attempt.
+Tokens are single use, so the admin page resets its widget after every attempt.
 
 ### Announcements
 
@@ -296,12 +290,11 @@ All routes are served by `worker.js`. Anything that is not under `/api/` falls t
 
 | Route                                  | What it does                                                                 |
 | -------------------------------------- | ---------------------------------------------------------------------------- |
-| `POST /api/forms`                      | submit a request, bug report, feedback or application (1 per minute per IP, needs a human check) |
+| `POST /api/forms`                      | submit a request, bug report, feedback or application (1 per minute per IP) |
 | `/api/admin/submissions[/:id]`         | list, read, mark done and delete submissions. Needs `Authorization: Bearer <ADMIN_TOKEN>` |
 | `GET /api/announcement`                | the current banner (public, cached for 30 seconds)                           |
 | `/api/admin/announcement`              | read, set (`PUT`) and remove (`DELETE`) the banner. Admin token              |
-| `POST /api/chat`                       | AI proxy. Streams the Gemini reply back as server-sent events. Needs an `x-ai-pass` header |
-| `POST /api/chat/verify`                | trades a solved human check for a 30-minute AI pass                          |
+| `POST /api/chat`                       | AI proxy. Streams the Gemini reply back as server-sent events. |
 | `/api/global/...`                      | global chat: gate, login, rooms, messages, files, reports                    |
 | `GET /api/global/rooms/:id/game`       | WebSocket to that room's `GameRoom`                                          |
 | `/api/global/mod/...`                  | moderation for signed-in staff (mods get a smaller set than admins)         |
@@ -324,7 +317,7 @@ After deploying, check these things:
 1. The site loads and the pages navigate.
 2. Submitting a form shows up on the admin page.
 3. The AI page streams an answer and the chat lets you sign in.
-4. The human check appears on forms, admin sign-in, chat sign-in and the AI page, and a submission with a solved check goes through.
+4. The human check appears on the admin sign-in, and signing in with a solved check works.
 5. A multiplayer game starts in a chat room.
 
 ---
@@ -339,21 +332,17 @@ The request is not reaching the Worker. Run `npx wrangler dev` or open the deplo
 
 `GEMINI_API_KEY` is missing. Set it with `npx wrangler secret put GEMINI_API_KEY`, or add it to `.dev.vars` locally. Short outages on Google's side are retried automatically a few times before the page shows an error.
 
-### The AI page keeps asking for a human check
-
-The 30-minute pass expired or the Worker's signing secret changed. Solve the check again. If it loops, check that `TURNSTILE_SECRET` belongs to the same Turnstile widget as the site key in `Pages/ai.html`.
-
 ### The admin page says "unauthorized" or "complete the human check"
 
 The token must match `ADMIN_TOKEN` exactly, and the human check must be solved for each sign-in attempt. After 10 wrong tries from one IP, sign-in is blocked for 5 minutes.
 
 ### Turnstile says "siteverify isn't being called"
 
-The Worker is skipping the check. Make sure `TURNSTILE_SECRET` is set (`npx wrangler secret list`), that it is the secret from the same widget as your site key, and that you have redeployed. The warning clears after a real submission has been verified.
+The Worker is skipping the admin check. Make sure `TURNSTILE_SECRET` is set (`npx wrangler secret list`), that it is the secret from the same widget as your site key, and that you have redeployed. The warning clears after a real admin sign-in attempt has been verified.
 
 ### "Please complete the human check"
 
-The widget has not finished, or its token was already used. Wait for it to finish; each page resets its widget after every attempt. If it keeps failing, confirm your hostname is listed on the Turnstile widget.
+The widget has not finished, or its token was already used. Wait for it to finish; the admin page resets its widget after every attempt. If it keeps failing, confirm your hostname is listed on the Turnstile widget.
 
 ### Chat says "chat is not configured"
 

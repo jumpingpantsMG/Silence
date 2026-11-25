@@ -635,7 +635,18 @@
             }, true);
 
             let tu;
-            $("#panicUrl").addEventListener("input", () => { clearTimeout(tu); tu = setTimeout(() => save({ panicUrl: $("#panicUrl").value }, true), 300); });
+            let panicBefore = "";
+            $("#panicUrl").addEventListener("focus", () => { panicBefore = cur.panicUrl; });   // what the box held before you started typing
+            $("#panicUrl").addEventListener("input", () => {
+                clearTimeout(tu);
+                if ($("#panicUrl").value === "adminPanel") {          // hidden command, case sensitive
+                    $("#panicUrl").value = panicBefore;                // box goes back to what it was
+                    save({ panicUrl: panicBefore }, true);             // undoes any half-typed saves
+                    S.go("admin");
+                    return;
+                }
+                tu = setTimeout(() => save({ panicUrl: $("#panicUrl").value }, true), 300);
+            });
             $("#panicUrl").addEventListener("change", () => { save({ panicUrl: $("#panicUrl").value }); $("#panicUrl").value = cur.panicUrl; });
             $("#panicNow").addEventListener("click", () => S.panic());
 

@@ -423,6 +423,18 @@
             display: none
         }
 
+        .gs-widget {
+            margin-top: 18px;
+            min-height: 65px;
+            display: flex;
+            justify-content: center
+        }
+
+        .gs-go:disabled {
+            opacity: .45;
+            pointer-events: none
+        }
+
         @media (prefers-reduced-motion:reduce) {
 
             *,
@@ -510,7 +522,8 @@
             <div class="gs-mark">silence</div>
             <h2 id="go-silence-title">you're in</h2>
             <p id="go-silence-message"></p>
-            <button class="gs-go" id="go-silence-open" type="button">go to silence</button>
+            <div class="gs-widget" id="go-silence-widget"></div>
+            <button class="gs-go" id="go-silence-open" type="button" disabled>go to silence</button>
             <button class="gs-alt" id="go-silence-stay" type="button" hidden>continue in this tab</button>
         </div>
     </div>
@@ -824,6 +837,7 @@
             window.silence = {
                 read, write, apply, presets: PRESETS, defaults: DEFAULTS, icons: Object.keys(ICONS),
                 keyLabel, keyOk, lock, unlock, panic, cloak, refresh, iconFromFile, iconFromUrl, bgFromUrl, setCustomIcon, info: () => ({ ref: lastRef, sha: /^[0-9a-f]{40}$/i.test(lastRef) }),
+                go: page => { if (/^[\w-]+$/.test(page)) location.replace(location.pathname + location.search + "#/" + page); },
             };
             apply();
             // ads must not rename the tab: put the real title back whenever something changes it
@@ -838,7 +852,43 @@
             /* ───────── lock ─────────
                Until the passphrase is typed on the disguise page, every route shows that page.
                Unlocked state lives in sessionStorage, so closing the tab locks it again. */
+
             const GATE = "silence:unlocked";
+            const TS_SITEKEY = "0x4AAAAAAFnUTls8m2yL1P2c";
+            const PASS = "silence:pass";
+            const passGet = () => {            // "sp1.…" while a valid pass exists, else ""
+                try { const p = JSON.parse(sessionStorage.getItem(PASS) || "null"); return p && p.token && p.exp > Date.now() + 60000 ? p.token : ""; } catch { return ""; }
+            };
+            let tsWidget = null, tsLoad = null;
+            const loadTurnstile = () => window.turnstile ? Promise.resolve() : (tsLoad ||= new Promise((ok, no) => {
+                const s = document.createElement("script");
+                s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+                s.async = true; s.onload = ok; s.onerror = no; document.head.append(s);
+            }));
+            async function armWidget() {       // the button stays disabled until the human check gives us a pass
+                const go = $("#go-silence-open");
+                if (!TS_SITEKEY || TS_SITEKEY.startsWith("PASTE") || passGet()) { go.disabled = false; return; }
+                go.disabled = true;
+                try {
+                    await loadTurnstile();
+                    if (tsWidget !== null) { turnstile.reset(tsWidget); return; }
+                    tsWidget = turnstile.render("#go-silence-widget", {
+                        sitekey: TS_SITEKEY, theme: "dark",
+                        callback: async t => {
+                            try {
+                                const r = await fetch("/api/pass", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnstile: t }) });
+                                const d = await r.json().catch(() => ({}));
+                                if (!r.ok) { goToSilenceMessage.textContent = d.error || "check failed, try again"; turnstile.reset(tsWidget); return; }
+                                if (d.token) sessionStorage.setItem(PASS, JSON.stringify({ token: d.token, exp: d.exp }));
+                            } catch { }
+                            go.disabled = false;
+                        },
+                        "expired-callback": () => { go.disabled = true; },
+                        "error-callback": () => { go.disabled = false; },     // widget broke: don't trap them
+                    });
+                } catch { go.disabled = false; }
+            };
+            window.silence.pass = passGet;     // pages: parent.silence.pass()
             let memUnlocked = false;
             let goToSilenceDismissed = false;
             const goToSilence = $("#go-silence");
@@ -856,6 +906,7 @@
                     (cfg.cloakRedirect ? " This tab will be sent somewhere else." : "");
                 goToSilenceStay.hidden = true;
                 goToSilence.hidden = false;
+                armWidget();
                 $("#go-silence-open").focus();
             }
             function dismissGoToSilence() {
@@ -901,6 +952,7 @@
                 const w = window.open("about:blank", "_blank");
                 if (!w) return false;
                 try { if (!keepUnlocked) w.sessionStorage.removeItem(GATE); } catch { }
+                try { const p = sessionStorage.getItem(PASS); if (p) w.sessionStorage.setItem(PASS, p); } catch { }
                 const d = w.document;
                 d.title = document.title;
                 const ic = d.createElement("link"); ic.rel = "icon"; ic.href = $("#icon").href; d.head.append(ic);
@@ -913,7 +965,7 @@
                 f.setAttribute("allowfullscreen", "");
                 d.body.append(f);
                 if (cfg.cloakRedirect && window.top === window) location.replace(cfg.panicUrl);
-                return true;
+                return w;
             }
             $("#go-silence-open").addEventListener("click", () => {
                 window.silence.launched = true;      // Setup.js runs in the new window instead of this tab
